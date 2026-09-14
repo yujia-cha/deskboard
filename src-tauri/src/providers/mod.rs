@@ -7,6 +7,7 @@
 //! 2. 아래 `all()` 에 인스턴스를 추가한다.
 //! 3. 커맨드를 `lib.rs` 의 `generate_handler!` 에 등록한다.
 
+pub mod claude_usage;
 pub mod sysmon;
 
 use tauri::AppHandle;
@@ -19,5 +20,8 @@ pub trait Provider: Send + Sync {
 }
 
 pub fn all() -> Vec<Box<dyn Provider>> {
-    vec![Box::new(sysmon::SysmonProvider)]
+    vec![
+        Box::new(sysmon::SysmonProvider),
+        Box::new(claude_usage::ClaudeUsageProvider),
+    ]
 }

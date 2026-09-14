@@ -26,4 +26,17 @@ export function useEvent(name: string, handler: () => void) {
   }, [name, handler]);
 }
 
+/** 초기값은 커맨드로 가져오고 이후 이벤트로 갱신한다 (위젯이 늦게 마운트돼도 즉시 표시). */
+export function useProviderData<T>(eventName: string, command: string): T | null {
+  const [value, setValue] = useState<T | null>(null);
+  useEffect(() => {
+    let un: UnlistenFn | undefined;
+    let cancelled = false;
+    invoke<T>(command).then((v) => { if (!cancelled) setValue(v); }).catch(console.warn);
+    listen<T>(eventName, (e) => setValue(e.payload)).then((f) => { if (cancelled) f(); else un = f; });
+    return () => { cancelled = true; un?.(); };
+  }, [eventName, command]);
+  return value;
+}
+
 export const call = invoke;

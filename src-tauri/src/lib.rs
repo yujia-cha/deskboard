@@ -34,6 +34,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             window::set_theme_mode,
             window::set_click_through,
+            providers::claude_usage::get_claude_usage,
         ])
         .run(tauri::generate_context!())
         .expect("error while running deskboard");

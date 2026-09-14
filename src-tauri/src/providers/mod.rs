@@ -9,6 +9,7 @@
 
 pub mod calendar;
 pub mod claude_usage;
+pub mod spotify;
 pub mod sysmon;
 
 use tauri::AppHandle;
@@ -25,5 +26,6 @@ pub fn all() -> Vec<Box<dyn Provider>> {
         Box::new(sysmon::SysmonProvider),
         Box::new(claude_usage::ClaudeUsageProvider),
         Box::new(calendar::CalendarProvider),
+        Box::new(spotify::SpotifyProvider),
     ]
 }

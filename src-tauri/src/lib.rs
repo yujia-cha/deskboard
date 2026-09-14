@@ -38,6 +38,15 @@ pub fn run() {
             providers::calendar::calendar_list,
             providers::calendar::calendar_upsert,
             providers::calendar::calendar_delete,
+            providers::spotify::spotify_status,
+            providers::spotify::spotify_playlists,
+            providers::spotify::spotify_last_playback,
+            providers::spotify::spotify_set_active,
+            providers::spotify::spotify_login,
+            providers::spotify::spotify_cancel_login,
+            providers::spotify::spotify_logout,
+            providers::spotify::spotify_refresh,
+            providers::spotify::spotify_control,
         ])
         .run(tauri::generate_context!())
         .expect("error while running deskboard");

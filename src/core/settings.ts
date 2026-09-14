@@ -67,6 +67,7 @@ function defaultInstances(): WidgetInstance[] {
     { id: crypto.randomUUID(), widgetId: "sysmon", x: 24, y: 184, w: 360, h: 240, settings: defaultsOf(widgetById("sysmon")?.settingsSchema) },
     { id: crypto.randomUUID(), widgetId: "claude-usage", x: 344, y: 24, w: 340, h: 260, settings: defaultsOf(widgetById("claude-usage")?.settingsSchema) },
     { id: crypto.randomUUID(), widgetId: "calendar", x: 704, y: 24, w: 320, h: 400, settings: defaultsOf(widgetById("calendar")?.settingsSchema) },
+    { id: crypto.randomUUID(), widgetId: "spotify", x: 344, y: 304, w: 340, h: 320, settings: defaultsOf(widgetById("spotify")?.settingsSchema) },
   ];
 }
 

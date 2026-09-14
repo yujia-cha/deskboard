@@ -7,6 +7,7 @@ import { clockWidget } from "./clock";
 import { sysmonWidget } from "./sysmon";
 import { claudeUsageWidget } from "./claude-usage";
 import { calendarWidget } from "./calendar";
+import { spotifyWidget } from "./spotify";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const WIDGETS: WidgetDefinition<any>[] = [
@@ -14,6 +15,7 @@ export const WIDGETS: WidgetDefinition<any>[] = [
   sysmonWidget,
   claudeUsageWidget,
   calendarWidget,
+  spotifyWidget,
 ];
 
 export const widgetById = (id: string) => WIDGETS.find((w) => w.id === id);

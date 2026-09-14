@@ -9,7 +9,7 @@ import type { WidgetProps } from "../types";
 import "./Calendar.css";
 
 export interface CalendarSettings extends Record<string, unknown> {
-  weekStartsMonday: boolean; showWeekNumbers: boolean;
+  weekStartsMonday: boolean;
 }
 
 export interface CalendarEvent {

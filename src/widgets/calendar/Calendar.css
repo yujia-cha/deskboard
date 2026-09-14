@@ -37,8 +37,8 @@
 .cal-editor textarea { resize: none; }
 .cal-row { display: flex; align-items: center; gap: 6px; }
 .cal-colors button { width: 18px; height: 18px; border-radius: 9px; border: 2px solid transparent; }
-.cal-colors button.on { border-color: #fff; }
+.cal-colors button.on { border-color: var(--text); }
 .cal-actions button { background: rgba(255,255,255,.08); border: 0; color: var(--text); border-radius: 8px; padding: 4px 12px; }
-.cal-actions .primary { background: var(--accent); color: #fff; }
+.cal-actions .primary { background: var(--accent); color: var(--text); }
 .cal-actions .danger { color: var(--danger); }
 .cal-error { color: var(--danger); font-size: 11px; }

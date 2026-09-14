@@ -102,9 +102,8 @@ async fn refresh_and_store(http: &reqwest::Client, path: &std::path::Path, refre
 fn window_from(v: Option<&Value>) -> Option<LimitWindow> {
     let v = v?;
     if v.is_null() { return None; }
-    let util = v.get("utilization").and_then(Value::as_f64)?;
-    // 0~1 로 오면 % 로 환산
-    let utilization = if util <= 1.0 && v.get("utilization").map_or(false, |u| u.is_f64()) && util < 1.0 { util * 100.0 } else { util };
+    // API 는 % 단위 (0~100). 0.8 은 0.8% 이지 80% 가 아니다.
+    let utilization = v.get("utilization").and_then(Value::as_f64)?.clamp(0.0, 100.0);
     Some(LimitWindow { utilization, resets_at: v.get("resets_at").and_then(Value::as_str).map(str::to_string) })
 }
 
@@ -211,9 +210,11 @@ mod tests {
     }
 
     #[test]
-    fn fraction_becomes_percent() {
-        let l = parse_usage(&json!({"five_hour": {"utilization": 0.25}}));
-        assert_eq!(l.five_hour.unwrap().utilization, 25.0);
+    fn small_percent_is_not_rescaled() {
+        let l = parse_usage(&json!({"five_hour": {"utilization": 0.8}}));
+        assert_eq!(l.five_hour.unwrap().utilization, 0.8);
+        let l = parse_usage(&json!({"five_hour": {"utilization": 250}}));
+        assert_eq!(l.five_hour.unwrap().utilization, 100.0);
     }
 
     #[test]

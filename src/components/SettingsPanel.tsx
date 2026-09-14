@@ -5,6 +5,15 @@ import { WIDGETS, widgetById } from "../widgets/registry";
 import type { SettingField } from "../widgets/types";
 import "./SettingsPanel.css";
 
+/** 입력 중에는 건드리지 않고 blur/Enter 때만 적용하는 숫자 입력 */
+function NumField({ value, min, onCommit }: { value: number; min: number; onCommit: (v: number) => void }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => { setText(String(value)); }, [value]);
+  const commit = () => { const n = Math.round(Number(text)); onCommit(Number.isFinite(n) ? Math.max(min, n) : value); };
+  return <input type="number" min={min} step={8} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit}
+    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />;
+}
+
 const SIZE_PRESETS = [{ label: "작게", k: 0.75 }, { label: "기본", k: 1 }, { label: "크게", k: 1.4 }, { label: "아주 크게", k: 1.8 }];
 
 /** 전역 설정 + 선택된 위젯의 스키마 기반 설정 폼. */
@@ -44,16 +53,16 @@ export function SettingsPanel() {
               </div>
               <label className="row"><span>너비 × 높이 (px)</span>
                 <span className="pair">
-                  <input type="number" min={def.minSize.w} step={8} value={inst.w} onChange={(e) => s.moveResize(inst.id, { w: Math.max(def.minSize.w, Number(e.target.value) || def.minSize.w) })} />
+                  <NumField value={inst.w} min={def.minSize.w} onCommit={(w) => s.moveResize(inst.id, { w })} />
                   ×
-                  <input type="number" min={def.minSize.h} step={8} value={inst.h} onChange={(e) => s.moveResize(inst.id, { h: Math.max(def.minSize.h, Number(e.target.value) || def.minSize.h) })} />
+                  <NumField value={inst.h} min={def.minSize.h} onCommit={(h) => s.moveResize(inst.id, { h })} />
                 </span>
               </label>
               <label className="row"><span>위치 X, Y (px)</span>
                 <span className="pair">
-                  <input type="number" min={0} step={8} value={inst.x} onChange={(e) => s.moveResize(inst.id, { x: Math.max(0, Number(e.target.value) || 0) })} />
+                  <NumField value={inst.x} min={0} onCommit={(x) => s.moveResize(inst.id, { x })} />
                   ,
-                  <input type="number" min={0} step={8} value={inst.y} onChange={(e) => s.moveResize(inst.id, { y: Math.max(0, Number(e.target.value) || 0) })} />
+                  <NumField value={inst.y} min={0} onCommit={(y) => s.moveResize(inst.id, { y })} />
                 </span>
               </label>
               <div className="row dim"><span>내용 배율</span><span>{s.autoScale ? `${Math.round(contentScale(inst, true) * 100)}% (자동)` : "100% (자동 맞춤 꺼짐)"}</span></div>

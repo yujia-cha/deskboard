@@ -39,12 +39,6 @@ pub fn set_theme_mode(window: WebviewWindow, mode: ThemeMode) {
     apply_theme_mode(&window, mode);
 }
 
-/// 잠금 상태에서 빈 영역 클릭이 바탕화면으로 통과하게 할지 여부.
-#[tauri::command]
-pub fn set_click_through(window: WebviewWindow, enabled: bool) -> Result<(), String> {
-    window.set_ignore_cursor_events(enabled).map_err(|e| e.to_string())
-}
-
 /// 트레이 메뉴. 상태를 가진 항목(잠금/테마)은 프론트로 이벤트만 보내고, 프론트가 진실 원천이다.
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let toggle_lock = MenuItem::with_id(app, "toggle_lock", "편집 잠금/해제", true, None::<&str>)?;

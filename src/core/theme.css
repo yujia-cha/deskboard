@@ -12,6 +12,9 @@
   --danger: #ff6b6b;
   --ok: #58d68d;
   --warn: #f5b041;
+  --brand-spotify: #1ed760;
+  --on-light: #111;
+  --menu-bg: #222;
   --font: "Segoe UI Variable", "Segoe UI", "Pretendard", system-ui, sans-serif;
   --mono: "Cascadia Code", "Consolas", monospace;
 }

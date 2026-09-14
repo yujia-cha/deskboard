@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties, type PointerEvent as RPointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as RPointerEvent, type ReactNode } from "react";
 import { contentScale, useSettings, type WidgetInstance } from "../core/settings";
 import { widgetById } from "../widgets/registry";
 import "./WidgetFrame.css";
@@ -19,9 +19,18 @@ export function WidgetFrame({ inst, children }: { inst: WidgetInstance; children
   const drag = useRef<{ mode: "move" | "resize"; sx: number; sy: number; ox: number; oy: number; ow: number; oh: number } | null>(null);
 
   const scale = contentScale(inst, autoScale);
-  const HEADER = def.chromeless ? 0 : 29; // 헤더 높이(px)
-  const PAD = 12;
-  const inner = { w: (inst.w - PAD * 2) / scale, h: (inst.h - HEADER - PAD * 2) / scale };
+  // body 의 실제 내용 영역을 실측한다 (CSS zoom 하에서 clientWidth 는 배율을 뺀 레이아웃 px).
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [inner, setInner] = useState({ w: inst.w / scale, h: inst.h / scale });
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const measure = () => setInner({ w: el.clientWidth - 24, h: el.clientHeight - 24 });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [scale]);
 
   const snapTo = (v: number) => Math.max(0, Math.round(v / snap) * snap);
 
@@ -61,7 +70,7 @@ export function WidgetFrame({ inst, children }: { inst: WidgetInstance; children
           <button title="제거" onClick={() => removeWidget(inst.id)}>✕</button>
         </span>
       </div>
-      <div className="widget-body" style={bodyStyle}>{children(inner)}</div>
+      <div className="widget-body" style={bodyStyle} ref={bodyRef}>{children(inner)}</div>
       {!locked && <div className="widget-resize" onPointerDown={onDown("resize")} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />}
     </div>
   );

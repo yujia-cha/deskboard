@@ -32,8 +32,9 @@ export function useProviderData<T>(eventName: string, command: string): T | null
   useEffect(() => {
     let un: UnlistenFn | undefined;
     let cancelled = false;
-    invoke<T>(command).then((v) => { if (!cancelled) setValue(v); }).catch(console.warn);
-    listen<T>(eventName, (e) => setValue(e.payload)).then((f) => { if (cancelled) f(); else un = f; });
+    let gotEvent = false;
+    invoke<T>(command).then((v) => { if (!cancelled && !gotEvent) setValue(v); }).catch(console.warn);
+    listen<T>(eventName, (e) => { gotEvent = true; setValue(e.payload); }).then((f) => { if (cancelled) f(); else un = f; });
     return () => { cancelled = true; un?.(); };
   }, [eventName, command]);
   return value;

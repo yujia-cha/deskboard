@@ -35,6 +35,9 @@ pub fn run() {
             window::set_theme_mode,
             window::set_click_through,
             providers::claude_usage::get_claude_usage,
+            providers::calendar::calendar_list,
+            providers::calendar::calendar_upsert,
+            providers::calendar::calendar_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running deskboard");

@@ -1,0 +1,37 @@
+/* 디자인 토큰. 반투명/단색 모드는 <html data-theme-mode="translucent|solid"> 로 전환된다. */
+:root {
+  --radius: 16px;
+  --gap: 12px;
+  --accent: #7c9cff;
+  --text: rgba(255, 255, 255, 0.92);
+  --text-dim: rgba(255, 255, 255, 0.55);
+  --border: rgba(255, 255, 255, 0.10);
+  --surface: rgba(24, 24, 30, 0.55);
+  --surface-strong: rgba(24, 24, 30, 0.80);
+  --blur: 18px;
+  --danger: #ff6b6b;
+  --ok: #58d68d;
+  --warn: #f5b041;
+  --font: "Segoe UI Variable", "Segoe UI", "Pretendard", system-ui, sans-serif;
+  --mono: "Cascadia Code", "Consolas", monospace;
+}
+:root[data-theme-mode="solid"] {
+  --surface: rgb(28, 28, 34);
+  --surface-strong: rgb(36, 36, 44);
+  --blur: 0px;
+}
+
+* { box-sizing: border-box; }
+html, body, #root {
+  margin: 0; height: 100%;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  overflow: hidden;
+  user-select: none;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 3px; }

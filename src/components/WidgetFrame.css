@@ -1,0 +1,35 @@
+.widget {
+  position: absolute;
+  display: flex; flex-direction: column;
+  background: var(--surface);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  overflow: hidden;
+  transition: box-shadow .15s;
+}
+.widget.editing { box-shadow: 0 0 0 2px var(--accent), 0 8px 24px rgba(0,0,0,.3); }
+.widget-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 12px; font-size: 12px; color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.widget.chromeless .widget-header { position: absolute; inset: 0 0 auto 0; border: 0; background: transparent; opacity: 0; z-index: 2; }
+.widget.chromeless.editing .widget-header,
+.widget.chromeless:hover .widget-header { opacity: 1; background: linear-gradient(var(--surface-strong), transparent); }
+.widget.editing .widget-header { cursor: move; }
+.widget-actions { display: none; gap: 4px; }
+.widget:hover .widget-actions, .widget.editing .widget-actions { display: inline-flex; }
+.widget-actions button {
+  background: transparent; border: 0; color: var(--text-dim); padding: 0 4px; border-radius: 6px; line-height: 1;
+}
+.widget-actions button:hover { color: var(--text); background: rgba(255,255,255,.1); }
+.widget-body { flex: 1 1 auto; min-height: 0; padding: 12px; position: relative; }
+.widget-resize {
+  position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; z-index: 3;
+  background: linear-gradient(135deg, transparent 50%, var(--accent) 50%);
+  border-bottom-right-radius: var(--radius);
+}

@@ -23,6 +23,15 @@ pub struct GpuSample {
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
+pub struct DiskSample {
+    /// `C:` 형태로 정규화된 마운트
+    pub mount: String,
+    pub name: String,
+    pub used: u64,
+    pub total: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
 pub struct SensorSample {
     pub cpu_name: String,
     pub cpu_usage: f32,
@@ -33,6 +42,7 @@ pub struct SensorSample {
     pub mem_used: u64,
     pub mem_total: u64,
     pub gpu: Option<GpuSample>,
+    pub disks: Vec<DiskSample>,
 }
 
 /// 센서 소스 하나. `sample` 은 자기 필드만 채운다.

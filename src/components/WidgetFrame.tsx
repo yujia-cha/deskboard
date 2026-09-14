@@ -5,7 +5,10 @@ import "./WidgetFrame.css";
 
 /**
  * 둥근 카드 프레임. 편집 모드에서 헤더 드래그로 이동, 우하단 핸들로 크기 조절.
- * autoScale 이 켜져 있으면 내용(body)을 기본 크기 대비 배율로 확대/축소한다 (CSS zoom).
+ *
+ * 내용 배율(CSS zoom) = 비율 배율 × 넘침 보정.
+ * - 비율 배율: 기본 크기 대비 (autoScale 이 꺼져 있으면 1)
+ * - 넘침 보정: 렌더 후 body 의 scroll/client 크기를 재서 내용이 넘치면 그만큼 줄인다 → 잘리지 않음 보장
  * children 은 `(innerSize) => ReactNode` — 배율을 뺀 실제 레이아웃 크기를 받는다.
  */
 export function WidgetFrame({ inst, children }: { inst: WidgetInstance; children: (inner: { w: number; h: number }) => ReactNode }) {
@@ -18,19 +21,38 @@ export function WidgetFrame({ inst, children }: { inst: WidgetInstance; children
   const removeWidget = useSettings((s) => s.removeWidget);
   const drag = useRef<{ mode: "move" | "resize"; sx: number; sy: number; ox: number; oy: number; ow: number; oh: number } | null>(null);
 
-  const scale = contentScale(inst, autoScale);
-  // body 의 실제 내용 영역을 실측한다 (CSS zoom 하에서 clientWidth 는 배율을 뺀 레이아웃 px).
+  const ratio = contentScale(inst, autoScale);
+  const [fit, setFit] = useState(1);
+  const zoom = Math.max(0.4, Math.round(ratio * fit * 100) / 100);
+
+  // body 실측: inner 크기(배율 제외 레이아웃 px) + 넘침 보정
   const bodyRef = useRef<HTMLDivElement>(null);
-  const [inner, setInner] = useState({ w: inst.w / scale, h: inst.h / scale });
+  const [inner, setInner] = useState({ w: inst.w / zoom, h: inst.h / zoom });
   useEffect(() => {
     const el = bodyRef.current;
     if (!el) return;
-    const measure = () => setInner({ w: el.clientWidth - 24, h: el.clientHeight - 24 });
+    let raf = 0;
+    const measure = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        setInner({ w: el.clientWidth - 24, h: el.clientHeight - 24 });
+        const over = Math.max(el.scrollWidth / Math.max(1, el.clientWidth), el.scrollHeight / Math.max(1, el.clientHeight));
+        setFit((f) => {
+          if (over > 1.01) return Math.max(0.5 / ratio, Math.round((f / over) * 1000) / 1000); // 넘침 → 축소
+          if (over < 0.92 && f < 1) return Math.min(1, Math.round((f / over) * 1000) / 1000);  // 여유 → 회복
+          return f;
+        });
+      });
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
-  }, [scale]);
+    const mo = new MutationObserver(measure);
+    mo.observe(el, { childList: true, subtree: true, characterData: true });
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); mo.disconnect(); };
+  }, [ratio, zoom]);
+  // 크기/설정이 바뀌면 보정을 초기화하고 다시 잰다
+  useEffect(() => { setFit(1); }, [inst.w, inst.h, inst.settings]);
 
   const snapTo = (v: number) => Math.max(0, Math.round(v / snap) * snap);
   const clampX = (x: number, w: number) => Math.min(x, Math.max(0, window.innerWidth - w));
@@ -56,7 +78,7 @@ export function WidgetFrame({ inst, children }: { inst: WidgetInstance; children
   };
   const onUp = () => { drag.current = null; };
 
-  const bodyStyle: CSSProperties & { zoom?: number } = scale !== 1 ? { zoom: scale } : {};
+  const bodyStyle: CSSProperties & { zoom?: number } = zoom !== 1 ? { zoom } : {};
 
   return (
     <div
@@ -67,7 +89,7 @@ export function WidgetFrame({ inst, children }: { inst: WidgetInstance; children
       <div className="widget-header" onPointerDown={onDown("move")} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
         <span className="widget-title">{def.icon ? `${def.icon} ` : ""}{def.title}</span>
         <span className="widget-actions">
-          {scale !== 1 && <span className="widget-scale" title="내용 배율">{Math.round(scale * 100)}%</span>}
+          {zoom !== 1 && <span className="widget-scale" title="내용 배율">{Math.round(zoom * 100)}%</span>}
           <button title="설정" onClick={() => openSettings(inst.id)}>⚙</button>
           <button title="제거" onClick={() => removeWidget(inst.id)}>✕</button>
         </span>

@@ -6,7 +6,7 @@ export const claudeUsageWidget: WidgetDefinition<ClaudeUsageSettings> = {
   title: "Claude 한도",
   icon: "✨",
   component: ClaudeUsage,
-  defaultSize: { w: 340, h: 150 },
+  defaultSize: { w: 340, h: 170 },
   minSize: { w: 200, h: 100 },
   settingsSchema: [
     { key: "showOpus", label: "주간 Opus 한도도 표시", type: "boolean", default: false },

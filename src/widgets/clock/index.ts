@@ -10,6 +10,9 @@ export const clockWidget: WidgetDefinition<ClockSettings> = {
   minSize: { w: 180, h: 90 },
   chromeless: true,
   settingsSchema: [
+    { key: "digitStyle", label: "숫자 스타일", type: "select", default: "dots",
+      options: [{ value: "system", label: "시스템 폰트" }, { value: "dots", label: "도트 매트릭스 (■)" }] },
+    { key: "dotChar", label: "도트 문자 (■ 🟦 ⬜ ● 등)", type: "text", default: "■", placeholder: "■" },
     { key: "hour12", label: "12시간제", type: "boolean", default: false },
     { key: "seconds", label: "초 표시", type: "boolean", default: true },
     { key: "dateFormat", label: "날짜 형식", type: "select", default: "long",

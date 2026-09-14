@@ -1,0 +1,9 @@
+.dots { display: inline-flex; align-items: center; line-height: 1; }
+.dots-glyph { display: grid; grid-auto-rows: var(--cell); }
+.dots-cell {
+  width: var(--cell); height: var(--cell);
+  display: flex; align-items: center; justify-content: center;
+  font-size: calc(var(--cell) - var(--gap) * 2); line-height: 1;
+  color: var(--text); font-family: "Segoe UI Symbol", var(--font);
+}
+.dots-cell.emoji { font-family: "Segoe UI Emoji", var(--font); font-size: calc(var(--cell) * 0.82); }

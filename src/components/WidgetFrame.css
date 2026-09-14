@@ -25,7 +25,7 @@
   background: transparent; border: 0; color: var(--text-dim); padding: 0 4px; border-radius: 6px; line-height: 1;
 }
 .widget-actions button:hover { color: var(--text); background: rgba(255,255,255,.1); }
-.widget-body { flex: 1 1 auto; min-height: 0; padding: 12px; position: relative; }
+.widget-body { flex: 1 1 auto; min-height: 0; padding: 12px; position: relative; overflow: hidden; }
 .widget-resize {
   position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; z-index: 3;
   background: linear-gradient(135deg, transparent 50%, var(--accent) 50%);

@@ -40,7 +40,7 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
 - 창은 선택 모니터의 작업영역(`GetMonitorInfoW.rcWork`) 전체를 덮는다 (`window.rs::fit_to_work_area`, 2초마다 변화 감지). 위젯 좌표 = 작업영역 좌표.
 - `alwaysOnBottom` — 다른 앱 뒤, 바탕화면 위.
 - 히트 영역 click-through (`window.rs::start_hit_test`): 잠금 상태에서 커서가 위젯 사각형 밖이면 `set_ignore_cursor_events(true)` → 빈 영역 클릭이 바탕화면 아이콘으로 통과. 프론트가 `set_hit_regions` 로 사각형을 보낸다 (편집 모드·설정 패널 열림 = 비활성).
-- 내용 자동 맞춤: `contentScale()` = min(w/defaultW, h/defaultH) 를 `.widget-body` 에 CSS `zoom` 으로 적용. 위젯은 배율을 뺀 `size` 를 받는다.
+- 내용 자동 맞춤: zoom = `contentScale()`(기본 크기 대비 비율, autoScale 꺼지면 1) × 넘침 보정(`WidgetFrame` 이 body 의 scroll/client 비율을 재서 넘치면 축소). 내용이 잘리지 않음을 보장. 위젯은 배율을 뺀 `size` 를 받는다.
 
 ## 규칙
 - 색상은 CSS 변수만 (`--accent --text --text-dim --surface --surface-strong --border --ok --warn --danger`). 하드코딩 금지.

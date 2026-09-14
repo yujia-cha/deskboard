@@ -57,7 +57,7 @@ export function ClaudeUsage({ settings, size }: WidgetProps<ClaudeUsageSettings>
     { key: "7d", label: "주간 · 전체 모델", w: limits.seven_day },
     ...(settings.showOpus && limits.seven_day_opus ? [{ key: "7do", label: "주간 · Opus", w: limits.seven_day_opus }] : []),
   ];
-  const gaugeSize = Math.max(44, Math.min(120, (size.w - 16) / windows.length - 20, size.h - 46));
+  const gaugeSize = Math.max(44, Math.min(120, (size.w - 16) / windows.length - 20, size.h - 46 - (settings.showLocalCost ? 22 : 0)));
   const ago = Math.round((now - limits.fetched_at) / 60000);
 
   return (

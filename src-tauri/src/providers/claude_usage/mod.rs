@@ -179,20 +179,33 @@ async fn limits_loop(app: AppHandle, refresh: Arc<Notify>) {
         let st = app.state::<LimitsState>();
         (st.http.clone(), st.token_file.clone())
     };
+    // 조회 간격: 정상 60초. 트랜스크립트 변경/수동 새로고침으로 깨워도 마지막 조회 후 최소 30초는 띄운다.
+    // 429 를 받으면 5분 쉰다 (비공식 엔드포인트라 공손하게).
+    let mut last_fetch = std::time::Instant::now() - std::time::Duration::from_secs(3600);
     loop {
         let l = limits::fetch(&http, &path).await;
+        last_fetch = std::time::Instant::now();
+        let rate_limited = l.error.as_deref().map_or(false, |e| e.contains("너무 많습니다"));
+        let mut to_emit = l.clone();
         if let Some(st) = app.try_state::<LimitsState>() {
-            if let Ok(mut g) = st.latest.lock() { *g = l.clone(); }
+            if let Ok(mut g) = st.latest.lock() {
+                // 429 는 직전 정상값을 유지하고 오류 문구만 덧붙인다
+                if rate_limited && g.ok { g.error = l.error.clone(); } else { *g = l.clone(); }
+                to_emit = g.clone();
+            }
         }
-        let _ = app.emit("claude_usage://limits", &l);
-        // 로그인 만료는 사용자가 /login 할 때까지 바뀌지 않으므로 천천히 재시도 (파일 변경 알림이 오면 즉시)
-        // 미로그인 상태는 로그인 커맨드가 notify 로 깨우므로 느리게 돈다
-        let wait = if l.ok { 60 } else if !l.logged_in { 600 } else { 120 };
+        let _ = app.emit("claude_usage://limits", &to_emit);
+        let wait = if rate_limited { 300 } else if l.ok { 60 } else if !l.logged_in { 600 } else { 120 };
         tokio::select! {
             _ = tokio::time::sleep(std::time::Duration::from_secs(wait)) => {}
             _ = refresh.notified() => {
-                // 연속 변경을 묶어서 한 번만 조회
-                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                let since = last_fetch.elapsed().as_secs();
+                let min_gap: u64 = if rate_limited { 120 } else { 30 };
+                if since < min_gap {
+                    tokio::time::sleep(std::time::Duration::from_secs(min_gap - since)).await;
+                } else {
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await; // 연속 변경 묶기
+                }
             }
         }
     }

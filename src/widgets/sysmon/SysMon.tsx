@@ -6,13 +6,15 @@ import type { WidgetProps } from "../types";
 import "./SysMon.css";
 
 export interface SysMonSettings extends Record<string, unknown> {
-  showHistory: boolean; showCores: boolean; showGpu: boolean;
+  showHistory: boolean; showCores: boolean; showGpu: boolean; disks: string;
 }
+
+interface DiskSample { mount: string; name: string; used: number; total: number }
 
 interface GpuSample { name: string; temp_c: number | null; usage: number | null; mem_used_mb: number | null; mem_total_mb: number | null; power_w: number | null }
 interface SensorSample {
   cpu_name: string; cpu_usage: number; cpu_cores: number[]; cpu_temp_c: number | null; cpu_temp_source: string | null;
-  mem_used: number; mem_total: number; gpu: GpuSample | null;
+  mem_used: number; mem_total: number; gpu: GpuSample | null; disks: DiskSample[];
 }
 
 const HISTORY = 30; // 2초 간격 × 30 = 60초
@@ -36,6 +38,8 @@ export function SysMon({ settings, size }: WidgetProps<SysMonSettings>) {
   const memPct = (s.mem_used / s.mem_total) * 100;
   const showGpu = settings.showGpu && !!s.gpu;
   const gaugeSize = Math.max(56, Math.min(110, (size.w - 48) / (showGpu ? 3 : 2) - 16, size.h * 0.5));
+  const wanted = (settings.disks || "C:").split(",").map((d) => d.trim().toUpperCase().replace(/[\\/]+$/, "")).map((d) => (d.length === 1 ? `${d}:` : d)).filter(Boolean);
+  const disks = wanted.map((m) => s.disks.find((d) => d.mount === m)).filter((d): d is DiskSample => !!d);
   const temp = (t: number | null) => t == null ? null : <span className={`temp ${t >= 85 ? "hot" : t >= 70 ? "warm" : ""}`}>{Math.round(t)}°C</span>;
 
   return (
@@ -67,6 +71,21 @@ export function SysMon({ settings, size }: WidgetProps<SysMonSettings>) {
       {settings.showCores && (
         <div className="sysmon-cores">
           {s.cpu_cores.map((c, i) => <div key={i} className="core" style={{ height: `${Math.max(4, c)}%` }} title={`Core ${i}: ${Math.round(c)}%`} />)}
+        </div>
+      )}
+
+      {disks.length > 0 && (
+        <div className="sysmon-disks">
+          {disks.map((d) => {
+            const pct = (d.used / d.total) * 100;
+            return (
+              <div key={d.mount} className="sysmon-disk" title={`${d.name || d.mount} · ${gb(d.used)} / ${gb(d.total)} GB`}>
+                <span className="sysmon-disk-label">{d.mount}</span>
+                <span className="sysmon-disk-bar"><span className={pct >= 90 ? "danger" : pct >= 80 ? "warn" : ""} style={{ width: `${pct}%` }} /></span>
+                <span className="sysmon-disk-text dim">{gb(d.used)} / {gb(d.total)} GB · {Math.round(pct)}%</span>
+              </div>
+            );
+          })}
         </div>
       )}
 

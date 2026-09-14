@@ -70,7 +70,7 @@ export function SettingsPanel() {
                   <NumField value={inst.y} min={0} onCommit={(y) => s.moveResize(inst.id, { y })} />
                 </span>
               </label>
-              <div className="row dim"><span>내용 배율</span><span>{s.autoScale ? `${Math.round(contentScale(inst, true) * 100)}% (자동)` : "100% (자동 맞춤 꺼짐)"}</span></div>
+              <div className="row dim"><span>내용 배율</span><span>{s.autoScale ? `${Math.round(contentScale(inst, true) * 100)}% (넘치면 자동 축소)` : "100% (넘치면 자동 축소)"}</span></div>
             </section>
             <section>
               <h4>옵션</h4>
@@ -94,7 +94,7 @@ export function SettingsPanel() {
               <label className="row"><span>강조색</span>
                 <input type="color" value={s.accent} onChange={(e) => s.setAccent(e.target.value)} />
               </label>
-              <label className="row" title="위젯을 키우거나 줄이면 내용도 같은 비율로 확대/축소"><span>내용 자동 맞춤</span>
+              <label className="row" title="위젯을 키우면 내용도 같은 비율로 확대 (넘치는 내용은 항상 자동 축소)"><span>크기에 맞춰 내용 확대</span>
                 <input type="checkbox" checked={s.autoScale} onChange={(e) => s.setAutoScale(e.target.checked)} />
               </label>
               <label className="row" title="대시보드는 이 모니터의 작업영역(작업표시줄 제외) 전체를 덮습니다"><span>표시 모니터</span>

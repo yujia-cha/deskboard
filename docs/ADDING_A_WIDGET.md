@@ -46,7 +46,7 @@ export function Hello({ settings, size }: WidgetProps<HelloSettings>) {
 규칙:
 - 위젯은 `core/`(ipc, settings), `components/`(Gauge, Sparkline 등) 만 import 한다. 다른 위젯 폴더는 import 하지 않는다.
 - 색상은 CSS 변수(`--accent`, `--text`, `--text-dim`, `--surface`, `--ok`, `--warn`, `--danger`)만 쓴다. 반투명/단색 모드가 자동 반영된다.
-- `size` 로 반응형 처리한다 (작으면 요소를 숨기는 식).
+- `size` 로 반응형 처리한다 (작으면 요소를 숨기는 식). 넘치는 내용은 프레임이 자동으로 축소(zoom)하지만, `size` 로 직접 맞추는 편이 더 보기 좋다.
 
 ## 2. 백엔드 Provider (데이터가 OS·파일·외부 API 에서 올 때)
 

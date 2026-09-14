@@ -55,17 +55,27 @@ function applyTheme(mode: ThemeMode, accent: string) {
 }
 
 let saveTimer: number | undefined;
+let pending: (() => State) | null = null;
+async function flush() {
+  if (!pending) return;
+  const s = pending();
+  pending = null;
+  const data: Persisted = {
+    themeMode: s.themeMode, accent: s.accent, gridSnap: s.gridSnap, autoScale: s.autoScale,
+    canvasMonitor: s.canvasMonitor, instances: s.instances,
+  };
+  await store.set(KEY, data);
+  await store.save();
+}
+/** 모든 변경은 디스크에 저장된다 (150ms 디바운스, 창이 닫히거나 숨겨질 때는 즉시). */
 function persist(get: () => State) {
+  pending = get;
   window.clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(async () => {
-    const s = get();
-    const data: Persisted = {
-      themeMode: s.themeMode, accent: s.accent, gridSnap: s.gridSnap, autoScale: s.autoScale,
-      canvasMonitor: s.canvasMonitor, instances: s.instances,
-    };
-    await store.set(KEY, data);
-    await store.save();
-  }, 300);
+  saveTimer = window.setTimeout(() => { flush().catch(console.warn); }, 150);
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => { window.clearTimeout(saveTimer); flush().catch(console.warn); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) { window.clearTimeout(saveTimer); flush().catch(console.warn); } });
 }
 
 type R = { x: number; y: number; w: number; h: number };

@@ -22,7 +22,7 @@ export function Canvas() {
         const C = def.component;
         return (
           <WidgetFrame key={inst.id} inst={inst}>
-            <C instanceId={inst.id} settings={inst.settings} size={{ w: inst.w, h: inst.h }} editing={!locked} />
+            {(inner) => <C instanceId={inst.id} settings={inst.settings} size={inner} editing={!locked} />}
           </WidgetFrame>
         );
       })}

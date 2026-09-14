@@ -33,3 +33,4 @@
   background: linear-gradient(135deg, transparent 50%, var(--accent) 50%);
   border-bottom-right-radius: var(--radius);
 }
+.widget-scale { font-size: 10px; color: var(--text-dim); align-self: center; margin-right: 4px; }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useSettings } from "./core/settings";
 import { useEvent } from "./core/ipc";
 import { Canvas } from "./components/Canvas";
@@ -10,6 +11,8 @@ export default function App() {
   const load = useSettings((s) => s.load);
   const loaded = useSettings((s) => s.loaded);
   const locked = useSettings((s) => s.locked);
+  const settingsOpen = useSettings((s) => s.settingsOpen);
+  const instances = useSettings((s) => s.instances);
   const setLocked = useSettings((s) => s.setLocked);
   const toggleTheme = useSettings((s) => s.toggleTheme);
   const openSettings = useSettings((s) => s.openSettings);
@@ -26,6 +29,13 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [setLocked]);
+
+  // 히트 영역: 잠금 상태에서 위젯 밖 클릭은 바탕화면(아이콘)으로 통과시킨다.
+  useEffect(() => {
+    if (!loaded) return;
+    const rects = instances.map((i) => ({ x: i.x, y: i.y, w: i.w, h: i.h }));
+    invoke("set_hit_regions", { rects, enabled: locked && !settingsOpen }).catch(console.warn);
+  }, [loaded, instances, locked, settingsOpen]);
 
   if (!loaded) return null;
   return (

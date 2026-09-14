@@ -17,6 +17,8 @@ interface Persisted {
   themeMode: ThemeMode;
   accent: string;
   gridSnap: number;
+  /** 위젯 내용을 크기에 맞춰 확대/축소 */
+  autoScale: boolean;
   instances: WidgetInstance[];
 }
 
@@ -30,6 +32,7 @@ interface State extends Persisted {
   setThemeMode(m: ThemeMode): void;
   toggleTheme(): void;
   setAccent(c: string): void;
+  setAutoScale(v: boolean): void;
   setLocked(v: boolean): void;
   openSettings(instanceId?: string | null): void;
   closeSettings(): void;
@@ -54,7 +57,7 @@ function persist(get: () => State) {
   saveTimer = window.setTimeout(async () => {
     const s = get();
     const data: Persisted = {
-      themeMode: s.themeMode, accent: s.accent, gridSnap: s.gridSnap, instances: s.instances,
+      themeMode: s.themeMode, accent: s.accent, gridSnap: s.gridSnap, autoScale: s.autoScale, instances: s.instances,
     };
     await store.set(KEY, data);
     await store.save();
@@ -62,12 +65,14 @@ function persist(get: () => State) {
 }
 
 function defaultInstances(): WidgetInstance[] {
+  const mk = (widgetId: string, x: number, y: number, w: number, h: number): WidgetInstance =>
+    ({ id: crypto.randomUUID(), widgetId, x, y, w, h, settings: defaultsOf(widgetById(widgetId)?.settingsSchema) });
   return [
-    { id: crypto.randomUUID(), widgetId: "clock", x: 24, y: 24, w: 300, h: 140, settings: defaultsOf(widgetById("clock")?.settingsSchema) },
-    { id: crypto.randomUUID(), widgetId: "sysmon", x: 24, y: 184, w: 360, h: 240, settings: defaultsOf(widgetById("sysmon")?.settingsSchema) },
-    { id: crypto.randomUUID(), widgetId: "claude-usage", x: 344, y: 24, w: 340, h: 260, settings: defaultsOf(widgetById("claude-usage")?.settingsSchema) },
-    { id: crypto.randomUUID(), widgetId: "calendar", x: 704, y: 24, w: 320, h: 400, settings: defaultsOf(widgetById("calendar")?.settingsSchema) },
-    { id: crypto.randomUUID(), widgetId: "spotify", x: 344, y: 304, w: 340, h: 320, settings: defaultsOf(widgetById("spotify")?.settingsSchema) },
+    mk("clock", 24, 24, 300, 140),
+    mk("sysmon", 24, 184, 360, 240),
+    mk("claude-usage", 344, 24, 340, 150),
+    mk("calendar", 704, 24, 320, 400),
+    mk("spotify", 344, 194, 340, 320),
   ];
 }
 
@@ -75,6 +80,7 @@ export const useSettings = create<State>((set, get) => ({
   themeMode: "translucent",
   accent: "#7c9cff",
   gridSnap: 8,
+  autoScale: true,
   instances: [],
   loaded: false,
   locked: true,
@@ -82,9 +88,11 @@ export const useSettings = create<State>((set, get) => ({
   selected: null,
 
   async load() {
-    const saved = await store.get<Persisted>(KEY);
-    const s: Persisted = saved ?? {
-      themeMode: "translucent", accent: "#7c9cff", gridSnap: 8, instances: defaultInstances(),
+    const saved = await store.get<Partial<Persisted>>(KEY);
+    const s: Persisted = {
+      themeMode: "translucent", accent: "#7c9cff", gridSnap: 8, autoScale: true,
+      ...saved,
+      instances: saved?.instances ?? defaultInstances(),
     };
     // 레지스트리에서 사라진 위젯은 버리고, 스키마 기본값은 채운다.
     s.instances = s.instances
@@ -97,6 +105,7 @@ export const useSettings = create<State>((set, get) => ({
   setThemeMode(themeMode) { set({ themeMode }); applyTheme(themeMode, get().accent); persist(get); },
   toggleTheme() { get().setThemeMode(get().themeMode === "solid" ? "translucent" : "solid"); },
   setAccent(accent) { set({ accent }); applyTheme(get().themeMode, accent); persist(get); },
+  setAutoScale(autoScale) { set({ autoScale }); persist(get); },
   setLocked(locked) { set({ locked }); },
   openSettings(instanceId = null) { set({ settingsOpen: true, selected: instanceId }); },
   closeSettings() { set({ settingsOpen: false, selected: null }); },
@@ -126,3 +135,11 @@ export const useSettings = create<State>((set, get) => ({
     persist(get);
   },
 }));
+
+/** 위젯 크기에 따른 내용 배율. autoScale 이 꺼져 있으면 1. */
+export function contentScale(inst: WidgetInstance, autoScale: boolean): number {
+  const def = widgetById(inst.widgetId);
+  if (!autoScale || !def) return 1;
+  const s = Math.min(inst.w / def.defaultSize.w, inst.h / def.defaultSize.h);
+  return Math.max(0.6, Math.min(2.5, Math.round(s * 100) / 100));
+}

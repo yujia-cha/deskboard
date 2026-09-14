@@ -24,6 +24,7 @@ pub fn run() {
             let main = app.get_webview_window("main").expect("main window");
             window::apply_theme_mode(&main, window::ThemeMode::Translucent);
             window::build_tray(app.handle())?;
+            window::start_hit_test(app.handle().clone());
 
             for provider in providers::all() {
                 log::info!("starting provider `{}`", provider.id());
@@ -35,6 +36,9 @@ pub fn run() {
             window::set_theme_mode,
             window::set_click_through,
             providers::claude_usage::get_claude_usage,
+            providers::claude_usage::get_claude_limits,
+            providers::claude_usage::refresh_claude_limits,
+            window::set_hit_regions,
             providers::calendar::calendar_list,
             providers::calendar::calendar_upsert,
             providers::calendar::calendar_delete,

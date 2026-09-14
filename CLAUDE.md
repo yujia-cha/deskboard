@@ -8,7 +8,7 @@ Windows 바탕화면에 상주하는 개인 위젯 대시보드 (Tauri 2 + React
 |---|---|---|
 | `clock` | 없음 | 순수 프론트 |
 | `sysmon` | `providers/sysmon` | sysinfo(CPU/RAM) + nvidia-smi(GPU) + LibreHardwareMonitor(CPU 온도, 선택) |
-| `claude-usage` | `providers/claude_usage` | `~/.claude/projects/**/*.jsonl` 증분 파싱 + notify 감시, 가격표 `resources/pricing.json` |
+| `claude-usage` | `providers/claude_usage` | **구독 한도 %** (5시간 / 주간 전체모델): `~/.claude/.credentials.json` 의 OAuth 토큰으로 `api.anthropic.com/api/oauth/usage` 60초 폴링 + 트랜스크립트 변경 시 즉시. 만료 시 refresh token 으로 갱신해 파일에 되씀. 로컬 비용 추정(`*.jsonl` 파싱, `resources/pricing.json`)은 옵션 |
 | `calendar` | `providers/calendar` | SQLite (`%APPDATA%/com.user.deskboard/calendar.sqlite`) |
 | `spotify` | `providers/spotify` | PKCE 로그인, Web API 5초 폴링(위젯 표시 중에만) |
 
@@ -34,6 +34,11 @@ npm test               # vitest
 cd src-tauri && cargo test
 npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/nsis/
 ```
+
+## 창 동작
+- `alwaysOnBottom` — 다른 앱 뒤, 바탕화면 위.
+- 히트 영역 click-through (`window.rs::start_hit_test`): 잠금 상태에서 커서가 위젯 사각형 밖이면 `set_ignore_cursor_events(true)` → 빈 영역 클릭이 바탕화면 아이콘으로 통과. 프론트가 `set_hit_regions` 로 사각형을 보낸다 (편집 모드·설정 패널 열림 = 비활성).
+- 내용 자동 맞춤: `contentScale()` = min(w/defaultW, h/defaultH) 를 `.widget-body` 에 CSS `zoom` 으로 적용. 위젯은 배율을 뺀 `size` 를 받는다.
 
 ## 규칙
 - 색상은 CSS 변수만 (`--accent --text --text-dim --surface --surface-strong --border --ok --warn --danger`). 하드코딩 금지.

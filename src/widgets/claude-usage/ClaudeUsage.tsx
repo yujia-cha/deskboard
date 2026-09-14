@@ -1,24 +1,24 @@
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useProviderData } from "../../core/ipc";
-import { Sparkline } from "../../components/Sparkline";
+import { Gauge } from "../../components/Gauge";
 import type { WidgetProps } from "../types";
 import "./ClaudeUsage.css";
 
 export interface ClaudeUsageSettings extends Record<string, unknown> {
-  period: "today" | "week" | "month" | "session";
-  showModels: boolean;
-  showChart: boolean;
-  krwRate: number; // 0 이면 USD 만 표시
+  showOpus: boolean;
+  showLocalCost: boolean;
+  krwRate: number;
 }
 
+interface LimitWindow { utilization: number; resets_at: string | null }
+interface Limits {
+  ok: boolean; error: string | null; subscription: string | null;
+  five_hour: LimitWindow | null; seven_day: LimitWindow | null; seven_day_opus: LimitWindow | null; seven_day_sonnet: LimitWindow | null;
+  fetched_at: number;
+}
 interface Totals { requests: number; input: number; output: number; cache_write: number; cache_read: number; cost_usd: number }
-interface UsageSummary {
-  today: Totals; week: Totals; month: Totals; all_time: Totals; current_session: Totals;
-  daily: (Totals & { date: string })[];
-  by_model: (Totals & { model: string; priced: boolean })[];
-  current_session_id: string; last_activity: string | null; unpriced_models: string[]; transcripts_dir: string;
-}
-
-const PERIOD_LABEL = { today: "오늘", week: "최근 7일", month: "최근 30일", session: "현재 세션" } as const;
+interface UsageSummary { today: Totals; week: Totals }
 
 export function fmtTokens(n: number): string {
   if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
@@ -32,62 +32,55 @@ export function fmtUsd(v: number): string {
 export function shortModel(m: string): string {
   return m.replace(/^claude-/, "").replace(/-\d{8}$/, "");
 }
+/** 리셋까지 남은 시간. "2시간 10분", "3일 4시간" */
+export function untilReset(iso: string | null, now = Date.now()): string {
+  if (!iso) return "";
+  const ms = new Date(iso).getTime() - now;
+  if (!Number.isFinite(ms) || ms <= 0) return "곧 리셋";
+  const m = Math.floor(ms / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  if (d >= 1) return `${d}일 ${h % 24}시간 후 리셋`;
+  if (h >= 1) return `${h}시간 ${m % 60}분 후 리셋`;
+  return `${m}분 후 리셋`;
+}
 
 export function ClaudeUsage({ settings, size }: WidgetProps<ClaudeUsageSettings>) {
-  const s = useProviderData<UsageSummary>("claude_usage://update", "get_claude_usage");
-  if (!s) return <div className="dim">불러오는 중…</div>;
+  const limits = useProviderData<Limits>("claude_usage://limits", "get_claude_limits");
+  const usage = useProviderData<UsageSummary>("claude_usage://update", "get_claude_usage");
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
 
-  const t: Totals = settings.period === "session" ? s.current_session : s[settings.period];
-  const compact = size.h < 200;
-  const last7 = s.daily.slice(-7);
-  const week = s.daily.slice(-7).map((d) => d.cost_usd);
-  const ago = s.last_activity ? relTime(new Date(s.last_activity)) : "기록 없음";
-  const maxModelCost = Math.max(1e-9, ...s.by_model.map((m) => m.cost_usd));
+  if (!limits || (!limits.ok && !limits.error)) return <div className="dim">한도 조회 중…</div>;
+
+  const windows: { key: string; label: string; w: LimitWindow | null }[] = [
+    { key: "5h", label: "5시간", w: limits.five_hour },
+    { key: "7d", label: "주간 · 전체 모델", w: limits.seven_day },
+    ...(settings.showOpus && limits.seven_day_opus ? [{ key: "7do", label: "주간 · Opus", w: limits.seven_day_opus }] : []),
+  ];
+  const gaugeSize = Math.max(44, Math.min(120, (size.w - 16) / windows.length - 20, size.h - 46));
+  const ago = Math.round((now - limits.fetched_at) / 60000);
 
   return (
     <div className="cu">
-      <div className="cu-head">
-        <div>
-          <div className="cu-cost">{fmtUsd(t.cost_usd)}
-            {settings.krwRate > 0 && <span className="cu-krw"> ≈ ₩{Math.round(t.cost_usd * settings.krwRate).toLocaleString()}</span>}
+      <div className="cu-gauges">
+        {windows.map(({ key, label, w }) => (
+          <div key={key} className="cu-gauge">
+            <Gauge value={w ? w.utilization : null} label={label} size={gaugeSize} stroke={Math.max(6, gaugeSize * 0.1)} />
+            <div className="cu-reset dim">{w ? untilReset(w.resets_at, now) : "—"}</div>
           </div>
-          <div className="dim">{PERIOD_LABEL[settings.period]} · {t.requests.toLocaleString()}회 · 마지막 {ago}</div>
-        </div>
-        <div className="cu-tokens">
-          <div><span className="dim">입력</span> {fmtTokens(t.input)}</div>
-          <div><span className="dim">출력</span> {fmtTokens(t.output)}</div>
-          <div><span className="dim">캐시</span> {fmtTokens(t.cache_read)}<span className="dim">r</span> {fmtTokens(t.cache_write)}<span className="dim">w</span></div>
-        </div>
+        ))}
       </div>
-
-      {!compact && settings.showChart && (
-        <div className="cu-chart" title={last7.map((d) => `${d.date}: ${fmtUsd(d.cost_usd)}`).join("\n")}>
-          <Sparkline values={week} height={34} />
-          <div className="cu-days">{last7.map((d) => <span key={d.date}>{d.date.slice(8)}</span>)}</div>
-        </div>
-      )}
-
-      {!compact && settings.showModels && (
-        <div className="cu-models">
-          {s.by_model.slice(0, 4).map((m) => (
-            <div key={m.model} className="cu-model" title={`${m.model}: ${fmtTokens(m.output)} out / ${m.requests}회`}>
-              <span className="cu-model-name">{shortModel(m.model)}{!m.priced && " (가격 미등록)"}</span>
-              <span className="cu-bar"><span style={{ width: `${(m.cost_usd / maxModelCost) * 100}%` }} /></span>
-              <span className="cu-model-cost">{fmtUsd(m.cost_usd)}</span>
-            </div>
-          ))}
-          {s.by_model.length === 0 && <div className="dim">최근 30일 기록 없음 ({s.transcripts_dir})</div>}
+      <div className="cu-foot dim">
+        {limits.error
+          ? <span className="cu-error" title={limits.error}>⚠ {limits.error}</span>
+          : <span>{limits.subscription ? `${limits.subscription} · ` : ""}{ago <= 0 ? "방금 동기화" : `${ago}분 전 동기화`}</span>}
+        <button title="새로고침" onClick={() => invoke("refresh_claude_limits").catch(() => {})}>↻</button>
+      </div>
+      {settings.showLocalCost && usage && (
+        <div className="cu-local dim">
+          오늘 {fmtUsd(usage.today.cost_usd)}{settings.krwRate > 0 && ` (₩${Math.round(usage.today.cost_usd * settings.krwRate).toLocaleString()})`} · {fmtTokens(usage.today.output)} out
+          &nbsp;·&nbsp; 7일 {fmtUsd(usage.week.cost_usd)}
         </div>
       )}
     </div>
   );
-}
-
-function relTime(d: Date): string {
-  const m = Math.round((Date.now() - d.getTime()) / 60000);
-  if (m < 1) return "방금";
-  if (m < 60) return `${m}분 전`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h}시간 전`;
-  return `${Math.round(h / 24)}일 전`;
 }

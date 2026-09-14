@@ -20,3 +20,15 @@ describe("claude usage formatting", () => {
     expect(shortModel("claude-sonnet-4-6-20260101")).toBe("sonnet-4-6");
   });
 });
+
+import { untilReset } from "./ClaudeUsage";
+describe("untilReset", () => {
+  const now = Date.parse("2026-09-14T12:00:00Z");
+  it("formats remaining time", () => {
+    expect(untilReset("2026-09-14T14:10:00Z", now)).toBe("2시간 10분 후 리셋");
+    expect(untilReset("2026-09-17T16:00:00Z", now)).toBe("3일 4시간 후 리셋");
+    expect(untilReset("2026-09-14T12:05:00Z", now)).toBe("5분 후 리셋");
+    expect(untilReset("2026-09-14T11:00:00Z", now)).toBe("곧 리셋");
+    expect(untilReset(null, now)).toBe("");
+  });
+});

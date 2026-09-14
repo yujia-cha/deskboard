@@ -1,13 +1,10 @@
-.cu { height: 100%; display: flex; flex-direction: column; gap: 10px; font-size: 12px; }
-.cu-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.cu-cost { font-size: 28px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.cu-krw { font-size: 13px; font-weight: 400; color: var(--text-dim); }
-.cu-tokens { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.5; }
-.cu-chart { flex: 0 0 auto; }
-.cu-days { display: flex; justify-content: space-between; color: var(--text-dim); font-size: 10px; padding: 0 2px; }
-.cu-models { display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
-.cu-model { display: grid; grid-template-columns: minmax(70px, auto) 1fr auto; gap: 8px; align-items: center; }
-.cu-model-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cu-bar { height: 6px; background: rgba(255,255,255,.1); border-radius: 3px; overflow: hidden; }
-.cu-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .4s; }
-.cu-model-cost { font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.cu { height: 100%; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.cu-gauges { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; justify-content: space-around; align-items: center; gap: 8px; }
+.cu-gauge { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.cu-gauge .gauge-label { white-space: nowrap; }
+.cu-reset { font-size: 10px; white-space: nowrap; }
+.cu-foot { display: flex; justify-content: space-between; align-items: center; font-size: 10px; }
+.cu-foot button { background: transparent; border: 0; color: var(--text-dim); padding: 0 4px; border-radius: 6px; }
+.cu-foot button:hover { color: var(--text); background: rgba(255,255,255,.1); }
+.cu-error { color: var(--warn); font-size: 10px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cu-local { font-size: 11px; border-top: 1px solid var(--border); padding-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

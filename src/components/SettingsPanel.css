@@ -22,3 +22,9 @@
 .settings .widget-list button:hover { border-color: var(--accent); }
 .settings .danger { color: var(--danger); align-self: flex-start; margin-top: 8px; }
 .dim { color: var(--text-dim); font-size: 12px; }
+.settings .preset-row { display: flex; gap: 4px; }
+.settings .preset-row button { background: rgba(255,255,255,.08); border: 1px solid var(--border); border-radius: 8px; padding: 3px 8px; font-size: 11px; }
+.settings .preset-row button:hover { border-color: var(--accent); }
+.settings .pair { display: inline-flex; align-items: center; gap: 4px; }
+.settings .pair input[type=number] { min-width: 70px; width: 70px; }
+.settings header span { display: inline-flex; gap: 6px; }

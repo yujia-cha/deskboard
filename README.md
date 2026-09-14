@@ -4,7 +4,8 @@ Windows 바탕화면 위젯 대시보드. 시계 · 캘린더 · Claude Code 사
 
 - 프레임 없는 투명 창이 항상 바탕화면 바로 위(다른 창 뒤)에 머문다.
 - 반투명(Acrylic) ↔ 단색 전환, 둥근 카드, 강조색 변경.
-- 위젯을 자유롭게 배치/크기 조절 (트레이 메뉴 → 편집 잠금/해제, `Esc` 로 잠금).
+- 위젯을 자유롭게 배치/크기 조절 (트레이 메뉴 → 편집 잠금/해제, `Esc` 로 잠금). 위젯 설정에서 크기 프리셋/px 지정, 내용은 크기에 맞춰 자동 확대·축소.
+- 위젯이 없는 빈 영역은 클릭이 바탕화면으로 통과한다 (아이콘 클릭 가능).
 - 새 위젯은 폴더 하나로 추가: [docs/ADDING_A_WIDGET.md](docs/ADDING_A_WIDGET.md)
 
 ## 실행
@@ -22,7 +23,7 @@ npm run tauri dev
 |---|---|
 | 시계 · 캘린더 | 없음 |
 | 시스템 | GPU: `nvidia-smi`(NVIDIA 드라이버). CPU 온도: [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) 실행 + Options → Remote Web Server 켜기 (포트 8085) |
-| Claude 사용량 | Claude Code 사용 기록 (`~/.claude/projects`). 모델 단가는 `src-tauri/resources/pricing.json`, 덮어쓰기는 `%APPDATA%\com.user.deskboard\pricing.json` |
+| Claude 한도 | Claude Code **CLI** 로 로그인한 상태 (`claude` 실행 → `/login`). 5시간 / 주간 한도 % 를 60초마다, 그리고 Claude Code 사용 직후 즉시 동기화. "로그인 만료" 가 뜨면 터미널에서 `claude` → `/login` 한 번 |
 | Spotify | [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) 에서 앱 생성 → Redirect URI `http://127.0.0.1:8888/callback` 추가 → Client ID 를 위젯에 입력. 재생 제어는 Premium 계정만 |
 
 ## 트레이 메뉴

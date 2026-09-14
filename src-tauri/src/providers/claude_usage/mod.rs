@@ -1,6 +1,7 @@
 //! Claude Code 로컬 사용량 — 트랜스크립트 JSONL 을 파싱해 토큰/비용을 집계하고,
 //! 파일 변경을 감시해 `claude_usage://update` 로 푸시한다.
 
+mod limits;
 mod parser;
 mod pricing;
 
@@ -13,7 +14,8 @@ use pricing::Pricing;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::{mpsc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
+use tokio::sync::Notify;
 use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -70,6 +72,10 @@ pub struct UsageSummary {
 }
 
 pub struct UsageState(pub Mutex<UsageSummary>);
+pub struct LimitsState {
+    pub latest: Mutex<limits::Limits>,
+    pub refresh: Arc<Notify>,
+}
 
 pub fn transcripts_dir() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".claude").join("projects")
@@ -126,6 +132,39 @@ pub fn get_claude_usage(state: tauri::State<'_, UsageState>) -> UsageSummary {
     state.0.lock().map(|s| s.clone()).unwrap_or_default()
 }
 
+#[tauri::command]
+pub fn get_claude_limits(state: tauri::State<'_, LimitsState>) -> limits::Limits {
+    state.latest.lock().map(|s| s.clone()).unwrap_or_default()
+}
+
+/// 위젯의 수동 새로고침.
+#[tauri::command]
+pub fn refresh_claude_limits(state: tauri::State<'_, LimitsState>) {
+    state.refresh.notify_one();
+}
+
+/// 60초마다, 그리고 트랜스크립트가 바뀔 때마다(디바운스) 한도를 조회해 `claude_usage://limits` 로 푸시.
+async fn limits_loop(app: AppHandle, refresh: Arc<Notify>) {
+    let http = reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)).build().expect("reqwest");
+    let path = limits::credentials_path();
+    loop {
+        let l = limits::fetch(&http, &path).await;
+        if let Some(st) = app.try_state::<LimitsState>() {
+            if let Ok(mut g) = st.latest.lock() { *g = l.clone(); }
+        }
+        let _ = app.emit("claude_usage://limits", &l);
+        // 로그인 만료는 사용자가 /login 할 때까지 바뀌지 않으므로 천천히 재시도 (파일 변경 알림이 오면 즉시)
+        let wait = if l.ok { 60 } else if l.error.as_deref().map_or(false, |e| e.contains("로그인 만료")) { 300 } else { 120 };
+        tokio::select! {
+            _ = tokio::time::sleep(std::time::Duration::from_secs(wait)) => {}
+            _ = refresh.notified() => {
+                // 연속 변경을 묶어서 한 번만 조회
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            }
+        }
+    }
+}
+
 pub struct ClaudeUsageProvider;
 
 impl Provider for ClaudeUsageProvider {
@@ -135,9 +174,12 @@ impl Provider for ClaudeUsageProvider {
 
     fn start(&self, app: AppHandle) {
         app.manage(UsageState(Mutex::new(UsageSummary::default())));
+        let refresh = Arc::new(Notify::new());
+        app.manage(LimitsState { latest: Mutex::new(limits::Limits::default()), refresh: refresh.clone() });
+        tauri::async_runtime::spawn(limits_loop(app.clone(), refresh.clone()));
         std::thread::Builder::new()
             .name("claude_usage".into())
-            .spawn(move || run(app))
+            .spawn(move || run(app, refresh))
             .expect("spawn claude_usage thread");
     }
 }
@@ -152,7 +194,7 @@ fn publish(app: &AppHandle, scanner: &Scanner, pricing: &Pricing, dir: &Path) {
     let _ = app.emit("claude_usage://update", &summary);
 }
 
-fn run(app: AppHandle) {
+fn run(app: AppHandle, refresh: Arc<Notify>) {
     let dir = transcripts_dir();
     let user_pricing = app
         .path()
@@ -193,7 +235,10 @@ fn run(app: AppHandle) {
                         added += scanner.scan_file(&ev.path).unwrap_or(0);
                     }
                 }
-                if added > 0 { publish(&app, &scanner, &pricing, &dir); }
+                if added > 0 {
+                    publish(&app, &scanner, &pricing, &dir);
+                    refresh.notify_one();
+                }
             }
             Ok(Err(e)) => log::debug!("claude_usage watch error: {e}"),
             Err(mpsc::RecvTimeoutError::Timeout) => {

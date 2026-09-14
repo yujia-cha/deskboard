@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
-import { useSettings } from "../core/settings";
+import { contentScale, useSettings } from "../core/settings";
 import { WIDGETS, widgetById } from "../widgets/registry";
 import type { SettingField } from "../widgets/types";
 import "./SettingsPanel.css";
+
+const SIZE_PRESETS = [{ label: "작게", k: 0.75 }, { label: "기본", k: 1 }, { label: "크게", k: 1.4 }, { label: "아주 크게", k: 1.8 }];
 
 /** 전역 설정 + 선택된 위젯의 스키마 기반 설정 폼. */
 export function SettingsPanel() {
@@ -20,17 +22,51 @@ export function SettingsPanel() {
       <div className="settings">
         <header>
           <strong>{def ? `${def.title} 설정` : "deskboard 설정"}</strong>
-          <button onClick={s.closeSettings}>✕</button>
+          <span>
+            {def && <button onClick={() => s.openSettings(null)} title="전체 설정">‹</button>}
+            <button onClick={s.closeSettings}>✕</button>
+          </span>
         </header>
 
         {def && inst ? (
-          <section>
-            {(def.settingsSchema ?? []).length === 0 && <p className="dim">이 위젯은 설정이 없습니다.</p>}
-            {def.settingsSchema?.map((f) => (
-              <Field key={f.key} f={f} value={inst.settings[f.key]} onChange={(v) => s.updateWidgetSettings(inst.id, { [f.key]: v })} />
-            ))}
-            <button className="danger" onClick={() => { s.removeWidget(inst.id); }}>위젯 제거</button>
-          </section>
+          <>
+            <section>
+              <h4>크기 · 위치</h4>
+              <div className="row"><span>프리셋</span>
+                <span className="preset-row">
+                  {SIZE_PRESETS.map((p) => (
+                    <button key={p.label} onClick={() => s.moveResize(inst.id, {
+                      w: Math.max(def.minSize.w, Math.round(def.defaultSize.w * p.k)),
+                      h: Math.max(def.minSize.h, Math.round(def.defaultSize.h * p.k)),
+                    })}>{p.label}</button>
+                  ))}
+                </span>
+              </div>
+              <label className="row"><span>너비 × 높이 (px)</span>
+                <span className="pair">
+                  <input type="number" min={def.minSize.w} step={8} value={inst.w} onChange={(e) => s.moveResize(inst.id, { w: Math.max(def.minSize.w, Number(e.target.value) || def.minSize.w) })} />
+                  ×
+                  <input type="number" min={def.minSize.h} step={8} value={inst.h} onChange={(e) => s.moveResize(inst.id, { h: Math.max(def.minSize.h, Number(e.target.value) || def.minSize.h) })} />
+                </span>
+              </label>
+              <label className="row"><span>위치 X, Y (px)</span>
+                <span className="pair">
+                  <input type="number" min={0} step={8} value={inst.x} onChange={(e) => s.moveResize(inst.id, { x: Math.max(0, Number(e.target.value) || 0) })} />
+                  ,
+                  <input type="number" min={0} step={8} value={inst.y} onChange={(e) => s.moveResize(inst.id, { y: Math.max(0, Number(e.target.value) || 0) })} />
+                </span>
+              </label>
+              <div className="row dim"><span>내용 배율</span><span>{s.autoScale ? `${Math.round(contentScale(inst, true) * 100)}% (자동)` : "100% (자동 맞춤 꺼짐)"}</span></div>
+            </section>
+            <section>
+              <h4>옵션</h4>
+              {(def.settingsSchema ?? []).length === 0 && <p className="dim">이 위젯은 옵션이 없습니다.</p>}
+              {def.settingsSchema?.map((f) => (
+                <Field key={f.key} f={f} value={inst.settings[f.key]} onChange={(v) => s.updateWidgetSettings(inst.id, { [f.key]: v })} />
+              ))}
+              <button className="danger" onClick={() => { s.removeWidget(inst.id); }}>위젯 제거</button>
+            </section>
+          </>
         ) : (
           <>
             <section>
@@ -43,6 +79,9 @@ export function SettingsPanel() {
               </label>
               <label className="row"><span>강조색</span>
                 <input type="color" value={s.accent} onChange={(e) => s.setAccent(e.target.value)} />
+              </label>
+              <label className="row" title="위젯을 키우거나 줄이면 내용도 같은 비율로 확대/축소"><span>내용 자동 맞춤</span>
+                <input type="checkbox" checked={s.autoScale} onChange={(e) => s.setAutoScale(e.target.checked)} />
               </label>
               <label className="row"><span>편집 모드</span>
                 <input type="checkbox" checked={!s.locked} onChange={(e) => s.setLocked(!e.target.checked)} />
@@ -67,7 +106,7 @@ export function SettingsPanel() {
               <h4>배치된 위젯</h4>
               {s.instances.map((i) => (
                 <button key={i.id} className="link" onClick={() => s.openSettings(i.id)}>
-                  {widgetById(i.widgetId)?.title} <span className="dim">({i.x},{i.y})</span>
+                  {widgetById(i.widgetId)?.icon} {widgetById(i.widgetId)?.title} <span className="dim">{i.w}×{i.h} @ {i.x},{i.y}</span>
                 </button>
               ))}
             </section>

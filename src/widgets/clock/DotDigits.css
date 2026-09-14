@@ -7,3 +7,9 @@
   color: var(--text); font-family: "Segoe UI Symbol", var(--font);
 }
 .dots-cell.emoji { font-family: "Segoe UI Emoji", var(--font); font-size: calc(var(--cell) * 0.82); }
+/* 블록 스타일: 켜진 셀을 둥근 사각형으로 */
+.dots-blocks .dots-cell { padding: calc(var(--gap) / 2); }
+.dots-blocks .dots-cell.on::before {
+  content: ""; display: block; width: 100%; height: 100%;
+  background: var(--block); border-radius: calc(var(--cell) * 0.12);
+}

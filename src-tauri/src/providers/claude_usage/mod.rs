@@ -179,7 +179,7 @@ async fn limits_loop(app: AppHandle, refresh: Arc<Notify>) {
         let st = app.state::<LimitsState>();
         (st.http.clone(), st.token_file.clone())
     };
-    // 조회 간격: 정상 60초. 트랜스크립트 변경/수동 새로고침으로 깨워도 마지막 조회 후 최소 30초는 띄운다.
+    // 조회 간격: 정상 120초. 트랜스크립트 변경/수동 새로고침으로 깨워도 마지막 조회 후 최소 60초는 띄운다.
     // 429 를 받으면 5분 쉰다 (비공식 엔드포인트라 공손하게).
     let mut last_fetch = std::time::Instant::now() - std::time::Duration::from_secs(3600);
     loop {
@@ -195,12 +195,12 @@ async fn limits_loop(app: AppHandle, refresh: Arc<Notify>) {
             }
         }
         let _ = app.emit("claude_usage://limits", &to_emit);
-        let wait = if rate_limited { 300 } else if l.ok { 60 } else if !l.logged_in { 600 } else { 120 };
+        let wait = if rate_limited { 300 } else if l.ok { 120 } else if !l.logged_in { 600 } else { 180 };
         tokio::select! {
             _ = tokio::time::sleep(std::time::Duration::from_secs(wait)) => {}
             _ = refresh.notified() => {
                 let since = last_fetch.elapsed().as_secs();
-                let min_gap: u64 = if rate_limited { 120 } else { 30 };
+                let min_gap: u64 = if rate_limited { 180 } else { 60 };
                 if since < min_gap {
                     tokio::time::sleep(std::time::Duration::from_secs(min_gap - since)).await;
                 } else {

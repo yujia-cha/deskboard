@@ -1,5 +1,5 @@
 .cu { height: 100%; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
-.cu-gauges { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; justify-content: space-around; align-items: center; gap: 8px; }
+.cu-gauges { flex: 1 1 auto; min-height: 0; display: flex; justify-content: space-around; align-items: center; gap: 8px; }
 .cu-gauge { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .cu-gauge .gauge-label { white-space: nowrap; }
 .cu-reset { font-size: 10px; white-space: nowrap; }

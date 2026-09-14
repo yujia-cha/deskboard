@@ -57,7 +57,8 @@ export function ClaudeUsage({ settings, size }: WidgetProps<ClaudeUsageSettings>
     { key: "7d", label: "주간 · 전체 모델", w: limits.seven_day },
     ...(settings.showOpus && limits.seven_day_opus ? [{ key: "7do", label: "주간 · Opus", w: limits.seven_day_opus }] : []),
   ];
-  const gaugeSize = Math.max(44, Math.min(120, (size.w - 16) / windows.length - 20, size.h - 46 - (settings.showLocalCost ? 22 : 0)));
+  // 세로: 게이지 원 + 라벨(16) + 리셋(12) + 푸터(14) + 간격 ≈ 60, 로컬 비용 줄이 있으면 +28
+  const gaugeSize = Math.max(44, Math.min(120, (size.w - 16) / windows.length - 20, size.h - 60 - (settings.showLocalCost ? 28 : 0)));
   const ago = Math.round((now - limits.fetched_at) / 60000);
 
   return (

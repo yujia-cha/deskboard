@@ -90,6 +90,17 @@ export function findFreeSlot(existing: R[], w: number, h: number, bounds = { w: 
   return { x: M, y: M };
 }
 
+/** 구버전 저장값 마이그레이션 (사용자가 직접 고르지 않은 옛 기본값만 바꾼다). */
+function migrate(widgetId: string, saved: WidgetSettings): WidgetSettings {
+  const out = { ...saved };
+  // 시계 v1 기본값(dots + long)은 블록 스타일 도입 전 값 → 새 기본으로
+  if (widgetId === "clock" && !("blockColor" in out)) {
+    if (out.digitStyle === "dots") out.digitStyle = "blocks";
+    if (out.dateFormat === "long") out.dateFormat = "mono";
+  }
+  return out;
+}
+
 export function defaultInstances(): WidgetInstance[] {
   const mk = (widgetId: string, x: number, y: number, w: number, h: number): WidgetInstance =>
     ({ id: crypto.randomUUID(), widgetId, x, y, w, h, settings: defaultsOf(widgetById(widgetId)?.settingsSchema) });
@@ -124,7 +135,7 @@ export const useSettings = create<State>((set, get) => ({
     // 레지스트리에서 사라진 위젯은 버리고, 스키마 기본값은 채운다.
     s.instances = s.instances
       .filter((i) => widgetById(i.widgetId))
-      .map((i) => ({ ...i, settings: { ...defaultsOf(widgetById(i.widgetId)!.settingsSchema), ...i.settings } }));
+      .map((i) => ({ ...i, settings: { ...defaultsOf(widgetById(i.widgetId)!.settingsSchema), ...migrate(i.widgetId, i.settings) } }));
     set({ ...s, loaded: true });
     applyTheme(s.themeMode, s.accent);
     invoke("set_canvas_monitor", { name: s.canvasMonitor }).catch(console.warn);

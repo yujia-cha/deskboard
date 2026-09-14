@@ -23,7 +23,7 @@ npm run tauri dev
 |---|---|
 | 시계 · 캘린더 | 없음 |
 | 시스템 | GPU: `nvidia-smi`(NVIDIA 드라이버). CPU 온도: [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) 실행 + Options → Remote Web Server 켜기 (포트 8085) |
-| Claude 한도 | 위젯의 [브라우저로 로그인] → claude.ai 승인 → 표시된 코드를 붙여넣기. 5시간 / 주간 한도 % 를 60초마다, 그리고 Claude Code 사용 직후 즉시 동기화. (Claude Code 와 같은 OAuth 클라이언트를 쓰는 비공식 방식, 토큰은 `%APPDATA%\com.user.deskboard\claude.json`) |
+| Claude 한도 | 위젯의 [브라우저로 로그인] → claude.ai 승인 → 표시된 코드를 붙여넣기. 5시간 / 주간 한도 % 를 2분마다, 그리고 Claude Code 사용 직후 즉시 동기화. (Claude Code 와 같은 OAuth 클라이언트를 쓰는 비공식 방식, 토큰은 `%APPDATA%\com.user.deskboard\claude.json`) |
 | Spotify | [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) 에서 앱 생성 → Redirect URI `http://127.0.0.1:8888/callback` 추가 → Client ID 를 위젯에 입력. 재생 제어는 Premium 계정만 |
 
 ## 트레이 메뉴

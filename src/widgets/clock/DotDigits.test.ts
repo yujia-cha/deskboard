@@ -18,3 +18,18 @@ describe("dot glyphs", () => {
     expect(fitCell("12:34", 300, 100)).toBeGreaterThanOrEqual(3);
   });
 });
+
+import { BLOCK_GLYPHS, BLOCK_ROWS } from "./DotDigits";
+describe("block glyphs", () => {
+  it("digits are 3x5 and colon is one column", () => {
+    for (let d = 0; d <= 9; d++) {
+      const rows = BLOCK_GLYPHS[String(d)];
+      expect(rows.length).toBe(BLOCK_ROWS);
+      for (const r of rows) expect(r).toMatch(/^[01]{3}$/);
+    }
+    expect(BLOCK_GLYPHS[":"].every((r) => r.length === 1)).toBe(true);
+  });
+  it("blocks fit larger than dots for the same box", () => {
+    expect(fitCell("12:34:56", 300, 100, "blocks")).toBeGreaterThan(fitCell("12:34:56", 300, 100, "dots"));
+  });
+});

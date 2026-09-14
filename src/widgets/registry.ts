@@ -4,10 +4,12 @@
  */
 import type { WidgetDefinition } from "./types";
 import { clockWidget } from "./clock";
+import { sysmonWidget } from "./sysmon";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const WIDGETS: WidgetDefinition<any>[] = [
   clockWidget,
+  sysmonWidget,
 ];
 
 export const widgetById = (id: string) => WIDGETS.find((w) => w.id === id);

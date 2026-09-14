@@ -64,6 +64,7 @@ function persist(get: () => State) {
 function defaultInstances(): WidgetInstance[] {
   return [
     { id: crypto.randomUUID(), widgetId: "clock", x: 24, y: 24, w: 300, h: 140, settings: defaultsOf(widgetById("clock")?.settingsSchema) },
+    { id: crypto.randomUUID(), widgetId: "sysmon", x: 24, y: 184, w: 360, h: 240, settings: defaultsOf(widgetById("sysmon")?.settingsSchema) },
   ];
 }
 

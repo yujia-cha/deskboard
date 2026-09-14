@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { contentScale, useSettings } from "../core/settings";
 import { WIDGETS, widgetById } from "../widgets/registry";
@@ -22,7 +23,11 @@ export function SettingsPanel() {
   const inst = s.instances.find((i) => i.id === s.selected);
   const def = inst ? widgetById(inst.widgetId) : undefined;
   const [autostart, setAutostart] = useState<boolean | null>(null);
-  useEffect(() => { isEnabled().then(setAutostart).catch(() => setAutostart(null)); }, []);
+  const [monitors, setMonitors] = useState<{ name: string; primary: boolean; work: { w: number; h: number } }[]>([]);
+  useEffect(() => {
+    isEnabled().then(setAutostart).catch(() => setAutostart(null));
+    invoke<typeof monitors>("list_monitors").then(setMonitors).catch(() => setMonitors([]));
+  }, []);
 
   if (!s.settingsOpen) return null;
 
@@ -92,6 +97,12 @@ export function SettingsPanel() {
               <label className="row" title="위젯을 키우거나 줄이면 내용도 같은 비율로 확대/축소"><span>내용 자동 맞춤</span>
                 <input type="checkbox" checked={s.autoScale} onChange={(e) => s.setAutoScale(e.target.checked)} />
               </label>
+              <label className="row" title="대시보드는 이 모니터의 작업영역(작업표시줄 제외) 전체를 덮습니다"><span>표시 모니터</span>
+                <select value={s.canvasMonitor ?? ""} onChange={(e) => s.setCanvasMonitor(e.target.value || null)}>
+                  <option value="">주 모니터</option>
+                  {monitors.map((m) => <option key={m.name} value={m.name}>{m.name.replace(/^\\\\\.\\/, "")} {m.work.w}×{m.work.h}{m.primary ? " (주)" : ""}</option>)}
+                </select>
+              </label>
               <label className="row"><span>편집 모드</span>
                 <input type="checkbox" checked={!s.locked} onChange={(e) => s.setLocked(!e.target.checked)} />
               </label>
@@ -113,6 +124,7 @@ export function SettingsPanel() {
             </section>
             <section>
               <h4>배치된 위젯</h4>
+              <button className="link" onClick={() => { if (confirm("모든 위젯을 기본 배치로 되돌릴까요?")) s.resetLayout(); }}>↺ 기본 레이아웃으로 초기화</button>
               {s.instances.map((i) => (
                 <button key={i.id} className="link" onClick={() => s.openSettings(i.id)}>
                   {widgetById(i.widgetId)?.icon} {widgetById(i.widgetId)?.title} <span className="dim">{i.w}×{i.h} @ {i.x},{i.y}</span>

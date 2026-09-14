@@ -7,7 +7,6 @@
 mod providers;
 mod window;
 
-use tauri::Manager;
 
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -21,8 +20,6 @@ pub fn run() {
             None,
         ))
         .setup(|app| {
-            let main = app.get_webview_window("main").expect("main window");
-            window::apply_theme_mode(&main, window::ThemeMode::Translucent);
             window::build_tray(app.handle())?;
             window::start_hit_test(app.handle().clone());
 
@@ -33,10 +30,14 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            window::set_theme_mode,
+            window::list_monitors,
+            window::set_canvas_monitor,
             providers::claude_usage::get_claude_usage,
             providers::claude_usage::get_claude_limits,
             providers::claude_usage::refresh_claude_limits,
+            providers::claude_usage::claude_login_start,
+            providers::claude_usage::claude_login_finish,
+            providers::claude_usage::claude_logout,
             window::set_hit_regions,
             providers::calendar::calendar_list,
             providers::calendar::calendar_upsert,

@@ -1,6 +1,7 @@
 //! Claude Code 로컬 사용량 — 트랜스크립트 JSONL 을 파싱해 토큰/비용을 집계하고,
 //! 파일 변경을 감시해 `claude_usage://update` 로 푸시한다.
 
+mod auth;
 mod limits;
 mod parser;
 mod pricing;
@@ -75,6 +76,9 @@ pub struct UsageState(pub Mutex<UsageSummary>);
 pub struct LimitsState {
     pub latest: Mutex<limits::Limits>,
     pub refresh: Arc<Notify>,
+    pub token_file: PathBuf,
+    pub pending: auth::Pending,
+    pub http: reqwest::Client,
 }
 
 pub fn transcripts_dir() -> PathBuf {
@@ -143,10 +147,38 @@ pub fn refresh_claude_limits(state: tauri::State<'_, LimitsState>) {
     state.refresh.notify_one();
 }
 
+/// 위젯 로그인 1단계: 인가 URL 을 브라우저로 열고 돌려준다.
+#[tauri::command]
+pub fn claude_login_start(state: tauri::State<'_, LimitsState>) -> String {
+    let url = auth::start(&state.pending);
+    if let Err(e) = tauri_plugin_opener::open_url(&url, None::<&str>) {
+        log::warn!("open browser failed: {e}");
+    }
+    url
+}
+
+/// 위젯 로그인 2단계: 승인 페이지의 코드를 받아 토큰으로 교환.
+#[tauri::command]
+pub async fn claude_login_finish(state: tauri::State<'_, LimitsState>, code: String) -> Result<(), String> {
+    auth::finish(&state.http, &state.pending, &state.token_file, &code).await?;
+    state.refresh.notify_one();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn claude_logout(app: AppHandle, state: tauri::State<'_, LimitsState>) {
+    auth::clear(&state.token_file);
+    let l = limits::Limits { fetched_at: auth::now_ms(), ..Default::default() };
+    if let Ok(mut g) = state.latest.lock() { *g = l.clone(); }
+    let _ = app.emit("claude_usage://limits", &l);
+}
+
 /// 60초마다, 그리고 트랜스크립트가 바뀔 때마다(디바운스) 한도를 조회해 `claude_usage://limits` 로 푸시.
 async fn limits_loop(app: AppHandle, refresh: Arc<Notify>) {
-    let http = reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)).build().expect("reqwest");
-    let path = limits::credentials_path();
+    let (http, path) = {
+        let st = app.state::<LimitsState>();
+        (st.http.clone(), st.token_file.clone())
+    };
     loop {
         let l = limits::fetch(&http, &path).await;
         if let Some(st) = app.try_state::<LimitsState>() {
@@ -154,7 +186,8 @@ async fn limits_loop(app: AppHandle, refresh: Arc<Notify>) {
         }
         let _ = app.emit("claude_usage://limits", &l);
         // 로그인 만료는 사용자가 /login 할 때까지 바뀌지 않으므로 천천히 재시도 (파일 변경 알림이 오면 즉시)
-        let wait = if l.ok { 60 } else if l.error.as_deref().map_or(false, |e| e.contains("로그인 만료")) { 300 } else { 120 };
+        // 미로그인 상태는 로그인 커맨드가 notify 로 깨우므로 느리게 돈다
+        let wait = if l.ok { 60 } else if !l.logged_in { 600 } else { 120 };
         tokio::select! {
             _ = tokio::time::sleep(std::time::Duration::from_secs(wait)) => {}
             _ = refresh.notified() => {
@@ -175,7 +208,14 @@ impl Provider for ClaudeUsageProvider {
     fn start(&self, app: AppHandle) {
         app.manage(UsageState(Mutex::new(UsageSummary::default())));
         let refresh = Arc::new(Notify::new());
-        app.manage(LimitsState { latest: Mutex::new(limits::Limits::default()), refresh: refresh.clone() });
+        let token_file = auth::token_path(&app.path().app_data_dir().expect("app data dir"));
+        app.manage(LimitsState {
+            latest: Mutex::new(limits::Limits::default()),
+            refresh: refresh.clone(),
+            token_file,
+            pending: auth::Pending::default(),
+            http: reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)).build().expect("reqwest"),
+        });
         tauri::async_runtime::spawn(limits_loop(app.clone(), refresh.clone()));
         std::thread::Builder::new()
             .name("claude_usage".into())

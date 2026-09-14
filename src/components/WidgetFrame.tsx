@@ -33,6 +33,8 @@ export function WidgetFrame({ inst, children }: { inst: WidgetInstance; children
   }, [scale]);
 
   const snapTo = (v: number) => Math.max(0, Math.round(v / snap) * snap);
+  const clampX = (x: number, w: number) => Math.min(x, Math.max(0, window.innerWidth - w));
+  const clampY = (y: number, h: number) => Math.min(y, Math.max(0, window.innerHeight - h));
 
   const onDown = (mode: "move" | "resize") => (e: RPointerEvent) => {
     if (locked || e.button !== 0) return;
@@ -46,10 +48,10 @@ export function WidgetFrame({ inst, children }: { inst: WidgetInstance; children
     const d = drag.current;
     if (!d) return;
     const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
-    if (d.mode === "move") moveResize(inst.id, { x: snapTo(d.ox + dx), y: snapTo(d.oy + dy) });
+    if (d.mode === "move") moveResize(inst.id, { x: clampX(snapTo(d.ox + dx), inst.w), y: clampY(snapTo(d.oy + dy), inst.h) });
     else moveResize(inst.id, {
-      w: Math.max(def.minSize.w, snapTo(d.ow + dx)),
-      h: Math.max(def.minSize.h, snapTo(d.oh + dy)),
+      w: Math.min(Math.max(def.minSize.w, snapTo(d.ow + dx)), window.innerWidth - inst.x),
+      h: Math.min(Math.max(def.minSize.h, snapTo(d.oh + dy)), window.innerHeight - inst.y),
     });
   };
   const onUp = () => { drag.current = null; };

@@ -9,7 +9,7 @@ export type ThemeMode = "translucent" | "solid";
 export interface WidgetInstance {
   id: string;        // 인스턴스 id (uuid)
   widgetId: string;  // WidgetDefinition.id
-  x: number; y: number; w: number; h: number; // px (창 좌표)
+  x: number; y: number; w: number; h: number; // px (창 좌표 = 작업영역 좌표)
   settings: WidgetSettings;
 }
 
@@ -19,6 +19,8 @@ interface Persisted {
   gridSnap: number;
   /** 위젯 내용을 크기에 맞춰 확대/축소 */
   autoScale: boolean;
+  /** 캔버스로 쓸 모니터 장치명. null = 주 모니터 */
+  canvasMonitor: string | null;
   instances: WidgetInstance[];
 }
 
@@ -33,11 +35,13 @@ interface State extends Persisted {
   toggleTheme(): void;
   setAccent(c: string): void;
   setAutoScale(v: boolean): void;
+  setCanvasMonitor(name: string | null): void;
   setLocked(v: boolean): void;
   openSettings(instanceId?: string | null): void;
   closeSettings(): void;
   addWidget(widgetId: string): void;
   removeWidget(instanceId: string): void;
+  resetLayout(): void;
   moveResize(instanceId: string, rect: Partial<Pick<WidgetInstance, "x" | "y" | "w" | "h">>): void;
   updateWidgetSettings(instanceId: string, patch: WidgetSettings): void;
 }
@@ -48,7 +52,6 @@ const KEY = "v1";
 function applyTheme(mode: ThemeMode, accent: string) {
   document.documentElement.dataset.themeMode = mode;
   document.documentElement.style.setProperty("--accent", accent);
-  invoke("set_theme_mode", { mode }).catch(console.warn);
 }
 
 let saveTimer: number | undefined;
@@ -57,22 +60,35 @@ function persist(get: () => State) {
   saveTimer = window.setTimeout(async () => {
     const s = get();
     const data: Persisted = {
-      themeMode: s.themeMode, accent: s.accent, gridSnap: s.gridSnap, autoScale: s.autoScale, instances: s.instances,
+      themeMode: s.themeMode, accent: s.accent, gridSnap: s.gridSnap, autoScale: s.autoScale,
+      canvasMonitor: s.canvasMonitor, instances: s.instances,
     };
     await store.set(KEY, data);
     await store.save();
   }, 300);
 }
 
-function defaultInstances(): WidgetInstance[] {
+type R = { x: number; y: number; w: number; h: number };
+export const overlaps = (a: R, b: R) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/** 기존 위젯과 겹치지 않는 첫 자리 (좌→우, 상→하, 40px 스텝). 못 찾으면 (24,24). */
+export function findFreeSlot(existing: R[], w: number, h: number, bounds = { w: window.innerWidth || 1920, h: window.innerHeight || 1040 }): { x: number; y: number } {
+  const STEP = 40, M = 24;
+  for (let y = M; y + h <= bounds.h - M; y += STEP)
+    for (let x = M; x + w <= bounds.w - M; x += STEP)
+      if (!existing.some((e) => overlaps({ x, y, w, h }, e))) return { x, y };
+  return { x: M, y: M };
+}
+
+export function defaultInstances(): WidgetInstance[] {
   const mk = (widgetId: string, x: number, y: number, w: number, h: number): WidgetInstance =>
     ({ id: crypto.randomUUID(), widgetId, x, y, w, h, settings: defaultsOf(widgetById(widgetId)?.settingsSchema) });
   return [
     mk("clock", 24, 24, 300, 140),
     mk("sysmon", 24, 184, 360, 240),
-    mk("claude-usage", 344, 24, 340, 150),
-    mk("calendar", 704, 24, 320, 400),
-    mk("spotify", 344, 194, 340, 320),
+    mk("claude-usage", 404, 24, 340, 150),
+    mk("spotify", 404, 194, 340, 320),
+    mk("calendar", 764, 24, 320, 400),
   ];
 }
 
@@ -81,6 +97,7 @@ export const useSettings = create<State>((set, get) => ({
   accent: "#7c9cff",
   gridSnap: 8,
   autoScale: true,
+  canvasMonitor: null,
   instances: [],
   loaded: false,
   locked: true,
@@ -90,7 +107,7 @@ export const useSettings = create<State>((set, get) => ({
   async load() {
     const saved = await store.get<Partial<Persisted>>(KEY);
     const s: Persisted = {
-      themeMode: "translucent", accent: "#7c9cff", gridSnap: 8, autoScale: true,
+      themeMode: "translucent", accent: "#7c9cff", gridSnap: 8, autoScale: true, canvasMonitor: null,
       ...saved,
       instances: saved?.instances ?? defaultInstances(),
     };
@@ -100,30 +117,36 @@ export const useSettings = create<State>((set, get) => ({
       .map((i) => ({ ...i, settings: { ...defaultsOf(widgetById(i.widgetId)!.settingsSchema), ...i.settings } }));
     set({ ...s, loaded: true });
     applyTheme(s.themeMode, s.accent);
+    invoke("set_canvas_monitor", { name: s.canvasMonitor }).catch(console.warn);
     if (!saved) persist(get);
   },
   setThemeMode(themeMode) { set({ themeMode }); applyTheme(themeMode, get().accent); persist(get); },
   toggleTheme() { get().setThemeMode(get().themeMode === "solid" ? "translucent" : "solid"); },
   setAccent(accent) { set({ accent }); applyTheme(get().themeMode, accent); persist(get); },
   setAutoScale(autoScale) { set({ autoScale }); persist(get); },
+  setCanvasMonitor(canvasMonitor) {
+    set({ canvasMonitor });
+    invoke("set_canvas_monitor", { name: canvasMonitor }).catch(console.warn);
+    persist(get);
+  },
   setLocked(locked) { set({ locked }); },
   openSettings(instanceId = null) { set({ settingsOpen: true, selected: instanceId }); },
   closeSettings() { set({ settingsOpen: false, selected: null }); },
   addWidget(widgetId) {
     const def = widgetById(widgetId);
     if (!def) return;
-    const n = get().instances.length;
-    const inst: WidgetInstance = {
-      id: crypto.randomUUID(), widgetId,
-      x: 24 + (n % 4) * 40, y: 24 + (n % 4) * 40,
-      w: def.defaultSize.w, h: def.defaultSize.h,
-      settings: defaultsOf(def.settingsSchema),
-    };
+    const { w, h } = def.defaultSize;
+    const { x, y } = findFreeSlot(get().instances, w, h);
+    const inst: WidgetInstance = { id: crypto.randomUUID(), widgetId, x, y, w, h, settings: defaultsOf(def.settingsSchema) };
     set({ instances: [...get().instances, inst], locked: false });
     persist(get);
   },
   removeWidget(instanceId) {
     set({ instances: get().instances.filter((i) => i.id !== instanceId), selected: null });
+    persist(get);
+  },
+  resetLayout() {
+    set({ instances: defaultInstances(), selected: null });
     persist(get);
   },
   moveResize(instanceId, rect) {

@@ -1,43 +1,103 @@
-//! 창 효과(반투명/단색)와 트레이 메뉴.
+//! 창 관리: 작업영역 전체 캔버스, 모니터 목록, 트레이 메뉴, 히트 영역 기반 click-through.
+//!
+//! 창은 항상 완전 투명(카드만 CSS 로 그림)이고, 선택한 모니터의 작업영역(작업표시줄 제외)을 꽉 채운다.
 
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Emitter, Manager, WebviewWindow,
+    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ThemeMode {
-    /// Windows Acrylic 블러 + 반투명 카드
-    Translucent,
-    /// 블러 없음, 카드는 불투명 (창 배경은 여전히 투명)
-    Solid,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct Rect {
+    pub x: i32,
+    pub y: i32,
+    pub w: i32,
+    pub h: i32,
 }
 
-/// 창에 OS 레벨 효과를 적용한다. CSS 쪽(`--surface` 알파)은 프론트가 따로 맞춘다.
-pub fn apply_theme_mode(window: &WebviewWindow, mode: ThemeMode) {
-    #[cfg(target_os = "windows")]
-    {
-        use window_vibrancy::{apply_acrylic, clear_acrylic};
-        let result = match mode {
-            ThemeMode::Translucent => apply_acrylic(window, Some((16, 16, 20, 40))),
-            ThemeMode::Solid => clear_acrylic(window),
-        };
-        if let Err(e) = result {
-            log::warn!("window effect failed ({mode:?}): {e}");
+#[derive(Debug, Clone, Serialize)]
+pub struct MonitorInfo {
+    pub name: String,
+    pub primary: bool,
+    pub bounds: Rect,
+    /// 작업표시줄을 뺀 영역
+    pub work: Rect,
+}
+
+// --- 모니터 열거 (Win32) ---------------------------------------------------------
+
+#[cfg(target_os = "windows")]
+pub fn monitors() -> Vec<MonitorInfo> {
+    use windows_sys::Win32::Foundation::{LPARAM, RECT};
+    use windows_sys::Win32::Graphics::Gdi::{
+        EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO, MONITORINFOEXW,
+    };
+
+    const MONITORINFOF_PRIMARY: u32 = 1;
+    unsafe extern "system" fn cb(h: HMONITOR, _dc: HDC, _r: *mut RECT, data: LPARAM) -> i32 {
+        // SAFETY: data 는 아래에서 넘긴 Vec 포인터이며 열거 동안 유효하다.
+        let out = unsafe { &mut *(data as *mut Vec<MonitorInfo>) };
+        let mut info: MONITORINFOEXW = unsafe { std::mem::zeroed() };
+        info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+        if unsafe { GetMonitorInfoW(h, &mut info as *mut MONITORINFOEXW as *mut MONITORINFO) } != 0 {
+            let name_len = info.szDevice.iter().position(|&c| c == 0).unwrap_or(info.szDevice.len());
+            let name = String::from_utf16_lossy(&info.szDevice[..name_len]);
+            let r = |r: RECT| Rect { x: r.left, y: r.top, w: r.right - r.left, h: r.bottom - r.top };
+            out.push(MonitorInfo {
+                name,
+                primary: info.monitorInfo.dwFlags & MONITORINFOF_PRIMARY != 0,
+                bounds: r(info.monitorInfo.rcMonitor),
+                work: r(info.monitorInfo.rcWork),
+            });
         }
+        1
     }
-    #[cfg(not(target_os = "windows"))]
-    let _ = (window, mode);
+
+    let mut out: Vec<MonitorInfo> = Vec::new();
+    // SAFETY: 콜백은 열거가 끝날 때까지만 out 을 참조한다.
+    unsafe { EnumDisplayMonitors(std::ptr::null_mut(), std::ptr::null(), Some(cb), &mut out as *mut _ as LPARAM) };
+    out
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn monitors() -> Vec<MonitorInfo> {
+    Vec::new()
+}
+
+fn pick_monitor(name: Option<&str>) -> Option<MonitorInfo> {
+    let list = monitors();
+    name.and_then(|n| list.iter().find(|m| m.name == n).cloned())
+        .or_else(|| list.iter().find(|m| m.primary).cloned())
+        .or_else(|| list.first().cloned())
+}
+
+/// 선택한 모니터의 작업영역으로 창을 맞춘다. 적용된 사각형을 돌려준다.
+pub fn fit_to_work_area(app: &AppHandle, name: Option<&str>) -> Option<Rect> {
+    let m = pick_monitor(name)?;
+    let win = app.get_webview_window("main")?;
+    let _ = win.set_position(PhysicalPosition::new(m.work.x, m.work.y));
+    let _ = win.set_size(PhysicalSize::new(m.work.w.max(1) as u32, m.work.h.max(1) as u32));
+    Some(m.work)
 }
 
 #[tauri::command]
-pub fn set_theme_mode(window: WebviewWindow, mode: ThemeMode) {
-    apply_theme_mode(&window, mode);
+pub fn list_monitors() -> Vec<MonitorInfo> {
+    monitors()
 }
+
+#[tauri::command]
+pub fn set_canvas_monitor(app: AppHandle, state: tauri::State<'_, HitRegions>, name: Option<String>) -> Option<Rect> {
+    if let Ok(mut s) = state.0.lock() {
+        s.monitor = name.clone();
+        s.applied = None;
+    }
+    fit_to_work_area(&app, name.as_deref())
+}
+
+// --- 트레이 ----------------------------------------------------------------------
 
 /// 트레이 메뉴. 상태를 가진 항목(잠금/테마)은 프론트로 이벤트만 보내고, 프론트가 진실 원천이다.
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
@@ -48,14 +108,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
-        &[
-            &toggle_lock,
-            &toggle_theme,
-            &settings,
-            &PredefinedMenuItem::separator(app)?,
-            &show,
-            &quit,
-        ],
+        &[&toggle_lock, &toggle_theme, &settings, &PredefinedMenuItem::separator(app)?, &show, &quit],
     )?;
 
     TrayIconBuilder::with_id("main")
@@ -74,7 +127,6 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                     }
                 }
                 other => {
-                    // toggle_lock / toggle_theme / settings → 프론트가 처리
                     let _ = app.emit(&format!("ui://{other}"), ());
                 }
             }
@@ -83,7 +135,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-// --- 히트 영역 기반 click-through ---------------------------------------------
+// --- 히트 영역 기반 click-through + 작업영역 유지 -------------------------------------
 //
 // 창은 투명하지만 빈 영역도 클릭을 가로채 바탕화면 아이콘을 누를 수 없다.
 // 프론트가 위젯 사각형 목록을 보내면, 커서가 그 밖에 있을 때만 창을 커서 무시 상태로 바꾼다
@@ -102,6 +154,10 @@ pub struct HitState {
     rects: Vec<HitRect>,
     /// false 면 절대 무시하지 않는다 (편집 모드, 설정 패널 열림)
     enabled: bool,
+    /// 캔버스로 쓸 모니터 이름 (None = 주 모니터)
+    monitor: Option<String>,
+    /// 마지막으로 적용한 작업영역
+    applied: Option<Rect>,
 }
 
 pub struct HitRegions(pub Mutex<HitState>);
@@ -127,13 +183,33 @@ fn cursor_pos() -> Option<(i32, i32)> { None }
 
 pub fn start_hit_test(app: AppHandle) {
     app.manage(HitRegions(Mutex::new(HitState::default())));
+    if let Some(r) = fit_to_work_area(&app, None) {
+        if let Ok(mut s) = app.state::<HitRegions>().0.lock() { s.applied = Some(r); }
+    }
     std::thread::Builder::new()
         .name("hit-test".into())
         .spawn(move || {
             let mut ignoring = false;
+            let mut tick: u32 = 0;
             loop {
                 std::thread::sleep(std::time::Duration::from_millis(50));
+                tick = tick.wrapping_add(1);
                 let Some(win) = app.get_webview_window("main") else { continue };
+
+                // 2초마다: 모니터/작업표시줄 변화에 맞춰 창 재배치
+                if tick % 40 == 0 {
+                    let (monitor, applied) = match app.state::<HitRegions>().0.lock() {
+                        Ok(s) => (s.monitor.clone(), s.applied),
+                        Err(_) => continue,
+                    };
+                    let current = pick_monitor(monitor.as_deref()).map(|m| m.work);
+                    if current.is_some() && current != applied {
+                        if let Some(r) = fit_to_work_area(&app, monitor.as_deref()) {
+                            if let Ok(mut s) = app.state::<HitRegions>().0.lock() { s.applied = Some(r); }
+                        }
+                    }
+                }
+
                 let (rects, enabled) = match app.state::<HitRegions>().0.lock() {
                     Ok(s) => (s.rects.clone(), s.enabled),
                     Err(_) => continue,

@@ -877,7 +877,6 @@ dependencies = [
  "url",
  "uuid",
  "walkdir",
- "window-vibrancy",
  "windows-sys 0.60.2",
 ]
 

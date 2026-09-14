@@ -6,9 +6,8 @@
   --text: rgba(255, 255, 255, 0.92);
   --text-dim: rgba(255, 255, 255, 0.55);
   --border: rgba(255, 255, 255, 0.10);
-  --surface: rgba(24, 24, 30, 0.55);
-  --surface-strong: rgba(24, 24, 30, 0.80);
-  --blur: 18px;
+  --surface: rgba(24, 24, 30, 0.62);
+  --surface-strong: rgba(24, 24, 30, 0.88);
   --danger: #ff6b6b;
   --ok: #58d68d;
   --warn: #f5b041;
@@ -21,7 +20,6 @@
 :root[data-theme-mode="solid"] {
   --surface: rgb(28, 28, 34);
   --surface-strong: rgb(36, 36, 44);
-  --blur: 0px;
 }
 
 * { box-sizing: border-box; }

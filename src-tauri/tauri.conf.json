@@ -21,9 +21,9 @@
         "shadow": false,
         "skipTaskbar": true,
         "alwaysOnBottom": true,
-        "resizable": true,
-        "minWidth": 320,
-        "minHeight": 240
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false
       }
     ],
     "security": {

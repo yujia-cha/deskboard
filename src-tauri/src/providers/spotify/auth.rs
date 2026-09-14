@@ -1,10 +1,8 @@
 //! Spotify OAuth — Authorization Code + PKCE (Client Secret 불필요).
 //! spotify-tui 의 `auth.py` 를 포팅했다: 루프백 서버로 리다이렉트를 받고, `state` 검증 후 토큰 교환.
 
-use base64::Engine;
-use rand::RngCore;
+pub use crate::providers::oauth::{pkce_pair, random_state};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -55,24 +53,6 @@ pub enum AuthError {
 
 pub fn now_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
-}
-
-fn b64url(bytes: &[u8]) -> String {
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
-}
-
-pub fn pkce_pair() -> (String, String) {
-    let mut raw = [0u8; 64];
-    rand::rng().fill_bytes(&mut raw);
-    let verifier = b64url(&raw);
-    let challenge = b64url(&Sha256::digest(verifier.as_bytes()));
-    (verifier, challenge)
-}
-
-pub fn random_state() -> String {
-    let mut raw = [0u8; 24];
-    rand::rng().fill_bytes(&mut raw);
-    b64url(&raw)
 }
 
 /// 리다이렉트 URI 에서 바인딩할 (host, port). 루프백만 허용.
@@ -218,21 +198,6 @@ pub fn save(path: &Path, f: &AuthFile) -> Result<(), AuthError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn pkce_challenge_is_s256_of_verifier() {
-        let (v, c) = pkce_pair();
-        assert!(v.len() >= 43 && v.len() <= 128);
-        assert_eq!(c, b64url(&Sha256::digest(v.as_bytes())));
-        assert!(!c.contains('=') && !c.contains('+') && !c.contains('/'));
-    }
-
-    #[test]
-    fn rfc7636_vector() {
-        // RFC 7636 Appendix B
-        let v = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
-        assert_eq!(b64url(&Sha256::digest(v.as_bytes())), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
-    }
 
     #[test]
     fn redirect_must_be_loopback() {

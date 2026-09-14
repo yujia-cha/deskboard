@@ -43,7 +43,7 @@ export default function App() {
       <Canvas />
       {!locked && (
         <div className="edit-bar">
-          편집 모드 — 빈 곳 드래그: 창 이동 · Esc: 잠금
+          편집 모드 — 헤더 드래그: 이동 · 모서리: 크기 · Esc: 잠금
           <button onClick={() => openSettings(null)}>⚙ 설정</button>
           <button onClick={() => setLocked(true)}>🔒 잠금</button>
         </div>

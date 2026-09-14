@@ -1,7 +1,7 @@
 .settings-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 100; display: flex; align-items: center; justify-content: center; }
 .settings {
   width: min(420px, 90vw); max-height: 85vh; overflow: auto;
-  background: var(--surface-strong); backdrop-filter: blur(var(--blur));
+  background: var(--surface-strong);
   border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px;
   display: flex; flex-direction: column; gap: 14px;
 }

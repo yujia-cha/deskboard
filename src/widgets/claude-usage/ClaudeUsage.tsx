@@ -13,7 +13,7 @@ export interface ClaudeUsageSettings extends Record<string, unknown> {
 
 interface LimitWindow { utilization: number; resets_at: string | null }
 interface Limits {
-  ok: boolean; error: string | null; subscription: string | null;
+  ok: boolean; logged_in: boolean; error: string | null;
   five_hour: LimitWindow | null; seven_day: LimitWindow | null; seven_day_opus: LimitWindow | null; seven_day_sonnet: LimitWindow | null;
   fetched_at: number;
 }
@@ -49,7 +49,8 @@ export function ClaudeUsage({ settings, size }: WidgetProps<ClaudeUsageSettings>
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
 
-  if (!limits || (!limits.ok && !limits.error)) return <div className="dim">한도 조회 중…</div>;
+  if (!limits || limits.fetched_at === 0) return <div className="dim">한도 조회 중…</div>;
+  if (!limits.logged_in) return <Login />;
 
   const windows: { key: string; label: string; w: LimitWindow | null }[] = [
     { key: "5h", label: "5시간", w: limits.five_hour },
@@ -72,8 +73,11 @@ export function ClaudeUsage({ settings, size }: WidgetProps<ClaudeUsageSettings>
       <div className="cu-foot dim">
         {limits.error
           ? <span className="cu-error" title={limits.error}>⚠ {limits.error}</span>
-          : <span>{limits.subscription ? `${limits.subscription} · ` : ""}{ago <= 0 ? "방금 동기화" : `${ago}분 전 동기화`}</span>}
-        <button title="새로고침" onClick={() => invoke("refresh_claude_limits").catch(() => {})}>↻</button>
+          : <span>{ago <= 0 ? "방금 동기화" : `${ago}분 전 동기화`}</span>}
+        <span>
+          <button title="새로고침" onClick={() => invoke("refresh_claude_limits").catch(() => {})}>↻</button>
+          <button title="로그아웃" onClick={() => invoke("claude_logout").catch(() => {})}>⏻</button>
+        </span>
       </div>
       {settings.showLocalCost && usage && (
         <div className="cu-local dim">
@@ -81,6 +85,47 @@ export function ClaudeUsage({ settings, size }: WidgetProps<ClaudeUsageSettings>
           &nbsp;·&nbsp; 7일 {fmtUsd(usage.week.cost_usd)}
         </div>
       )}
+    </div>
+  );
+}
+
+/** 브라우저 승인 → 코드 붙여넣기 방식 로그인 (CLI 불필요). */
+function Login() {
+  const [started, setStarted] = useState(false);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const start = async () => {
+    setErr(null);
+    try { await invoke<string>("claude_login_start"); setStarted(true); } catch (e) { setErr(String(e)); }
+  };
+  const finish = async () => {
+    if (!code.trim()) return;
+    setBusy(true); setErr(null);
+    try { await invoke("claude_login_finish", { code }); setCode(""); }
+    catch (e) { setErr(String(e)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="cu-login">
+      {!started ? (
+        <>
+          <div className="dim">claude.ai 계정으로 로그인하면 5시간 / 주간 한도를 표시합니다.</div>
+          <button className="primary" onClick={start}>브라우저로 로그인</button>
+        </>
+      ) : (
+        <>
+          <div className="dim">브라우저에서 승인하면 코드가 표시됩니다. 복사해서 붙여넣으세요.</div>
+          <div className="cu-login-row">
+            <input placeholder="코드 붙여넣기" value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === "Enter" && finish()} autoFocus />
+            <button className="primary" onClick={finish} disabled={busy || !code.trim()}>{busy ? "…" : "연결"}</button>
+          </div>
+          <button className="link" onClick={start}>승인 페이지 다시 열기</button>
+        </>
+      )}
+      {err && <div className="cu-error" title={err}>⚠ {err}</div>}
     </div>
   );
 }

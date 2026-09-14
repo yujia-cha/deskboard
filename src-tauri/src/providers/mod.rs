@@ -9,6 +9,7 @@
 
 pub mod calendar;
 pub mod claude_usage;
+pub mod oauth;
 pub mod spotify;
 pub mod sysmon;
 

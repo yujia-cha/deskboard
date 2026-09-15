@@ -28,7 +28,7 @@ export function Spotify({ instanceId, settings, size }: WidgetProps<SpotifySetti
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
-  const [volume, setVolume] = useState(0);
+  const [volume, setVolume] = useState(50); // 서버 값이 오기 전 기본 표시 (0이면 음소거 아이콘으로 오해)
   const draggingVolume = useRef(false);
   const prevVolume = useRef<number | null>(null);
 

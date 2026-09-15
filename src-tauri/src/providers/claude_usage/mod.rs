@@ -181,10 +181,11 @@ async fn limits_loop(app: AppHandle, refresh: Arc<Notify>) {
     };
     // 조회 간격: 정상 120초. 트랜스크립트 변경/수동 새로고침으로 깨워도 마지막 조회 후 최소 60초는 띄운다.
     // 429 를 받으면 5분 쉰다 (비공식 엔드포인트라 공손하게).
-    let mut last_fetch = std::time::Instant::now() - std::time::Duration::from_secs(3600);
+    // Instant 에서 Duration 을 빼면 부팅 직후(업타임 < 1h, 자동 시작 상황)에 패닉하므로 Option 으로 둔다
+    let mut last_fetch: Option<std::time::Instant> = None;
     loop {
         let l = limits::fetch(&http, &path).await;
-        last_fetch = std::time::Instant::now();
+        last_fetch = Some(std::time::Instant::now());
         let rate_limited = l.error.as_deref().map_or(false, |e| e.contains("너무 많습니다"));
         let mut to_emit = l.clone();
         if let Some(st) = app.try_state::<LimitsState>() {
@@ -199,7 +200,7 @@ async fn limits_loop(app: AppHandle, refresh: Arc<Notify>) {
         tokio::select! {
             _ = tokio::time::sleep(std::time::Duration::from_secs(wait)) => {}
             _ = refresh.notified() => {
-                let since = last_fetch.elapsed().as_secs();
+                let since = last_fetch.map_or(u64::MAX, |t| t.elapsed().as_secs());
                 let min_gap: u64 = if rate_limited { 180 } else { 60 };
                 if since < min_gap {
                     tokio::time::sleep(std::time::Duration::from_secs(min_gap - since)).await;

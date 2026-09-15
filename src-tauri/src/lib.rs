@@ -7,11 +7,18 @@
 mod providers;
 mod window;
 
+use tauri::Manager;
 
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     tauri::Builder::default()
+        // 두 번 실행(자동 시작 + 수동 실행)돼도 대시보드는 하나만 — 기존 창을 보여주고 새 프로세스는 종료
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())

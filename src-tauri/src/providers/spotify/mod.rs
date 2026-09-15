@@ -318,6 +318,7 @@ async fn run_control(app: &AppHandle, action: String, arg: Option<String>) -> Re
 /// 재생 제어. 활성 디바이스가 없으면 하나 깨워서 한 번 더 시도한다.
 #[tauri::command]
 pub async fn spotify_control(app: AppHandle, action: String, arg: Option<String>) -> Result<(), String> {
+    let is_volume = action == "volume";
     match run_control(&app, action.clone(), arg.clone()).await {
         Err(e) if e == ApiError::NoActiveDevice.to_string() => {
             let woke = with_api(&app, |api| Box::pin(async move { api.wake_device().await })).await.unwrap_or(false);
@@ -329,9 +330,11 @@ pub async fn spotify_control(app: AppHandle, action: String, arg: Option<String>
         }
         r => r,
     }?;
-    // 제어 직후 상태를 바로 갱신
-    if let Ok(p) = with_api(&app, |api| Box::pin(async move { api.playback().await })).await {
-        let _ = app.emit("spotify://playback", &p);
+    // 제어 직후 상태를 바로 갱신 (볼륨은 드래그 중 연속 호출이라 다음 폴링에 맡긴다)
+    if !is_volume {
+        if let Ok(p) = with_api(&app, |api| Box::pin(async move { api.playback().await })).await {
+            let _ = app.emit("spotify://playback", &p);
+        }
     }
     Ok(())
 }

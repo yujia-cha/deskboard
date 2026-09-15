@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { contentScale, useSettings } from "../core/settings";
 import { WIDGETS, widgetById } from "../widgets/registry";
 import type { SettingField } from "../widgets/types";
@@ -23,10 +22,8 @@ export function SettingsPanel() {
   const s = useSettings();
   const inst = s.instances.find((i) => i.id === s.selected);
   const def = inst ? widgetById(inst.widgetId) : undefined;
-  const [autostart, setAutostart] = useState<boolean | null>(null);
   const [monitors, setMonitors] = useState<{ name: string; primary: boolean; work: { w: number; h: number } }[]>([]);
   useEffect(() => {
-    isEnabled().then(setAutostart).catch(() => setAutostart(null));
     invoke<typeof monitors>("list_monitors").then(setMonitors).catch(() => setMonitors([]));
   }, []);
 
@@ -116,12 +113,8 @@ export function SettingsPanel() {
               <label className="row"><span>편집 모드</span>
                 <input type="checkbox" checked={!s.locked} onChange={(e) => s.setLocked(!e.target.checked)} />
               </label>
-              <label className="row"><span>Windows 시작 시 실행</span>
-                <input type="checkbox" checked={!!autostart} disabled={autostart === null}
-                  onChange={async (e) => {
-                    const on = e.target.checked;
-                    try { if (on) await enable(); else await disable(); setAutostart(on); } catch (err) { console.warn(err); }
-                  }} />
+              <label className="row" title={import.meta.env.DEV ? "개발 실행 중에는 등록하지 않습니다" : "설치된 deskboard 를 로그인 시 자동 실행"}><span>Windows 시작 시 실행</span>
+                <input type="checkbox" checked={s.autostart} onChange={(e) => { s.setAutostart(e.target.checked).catch(console.warn); }} />
               </label>
             </section>
             <section>

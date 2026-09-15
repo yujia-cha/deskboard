@@ -26,5 +26,9 @@ npm run tauri dev
 | Claude 한도 | 위젯의 [브라우저로 로그인] → claude.ai 승인 → 표시된 코드를 붙여넣기. 5시간 / 주간 한도 % 를 2분마다, 그리고 Claude Code 사용 직후 즉시 동기화. (Claude Code 와 같은 OAuth 클라이언트를 쓰는 비공식 방식, 토큰은 `%APPDATA%\com.user.deskboard\claude.json`) |
 | Spotify | [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) 에서 앱 생성 → Redirect URI `http://127.0.0.1:8888/callback` 추가 → Client ID 를 위젯에 입력. 재생 제어는 Premium 계정만 |
 
+## 자동 시작
+설치본은 Windows 로그인 시 자동으로 실행됩니다(기본 켜짐). 설정 → "Windows 시작 시 실행" 에서 끌 수 있습니다.
+이미 실행 중일 때 다시 실행하면 새 창을 만들지 않고 기존 대시보드를 보여줍니다.
+
 ## 트레이 메뉴
 편집 잠금/해제 · 반투명/단색 전환 · 설정 · 표시/숨기기 · 종료

@@ -37,6 +37,11 @@ cd src-tauri && cargo test
 npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/nsis/
 ```
 
+## 시작/종료
+- 자동 시작: `settings.ts::load` 에서 `autostart`(기본 true) 에 따라 plugin-autostart enable/disable. 개발 실행(`import.meta.env.DEV`)에서는 등록하지 않는다.
+- 단일 인스턴스: `tauri-plugin-single-instance` — 두 번째 실행은 기존 창 `show()` 후 종료.
+- 트레이 종료: `ui://quit` 이벤트로 프론트가 설정을 즉시 저장한 뒤 400ms 후 `app.exit`.
+
 ## 창 동작
 - 창은 항상 완전 투명(OS 블러 없음). 카드만 CSS `--surface` 로 그린다. 반투명/단색은 CSS 변수 전환.
 - 창은 선택 모니터의 작업영역(`GetMonitorInfoW.rcWork`) 전체를 덮는다 (`window.rs::fit_to_work_area`, 2초마다 변화 감지). 위젯 좌표 = 작업영역 좌표.

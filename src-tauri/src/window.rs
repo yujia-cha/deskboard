@@ -119,7 +119,15 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| {
             let id = event.id().as_ref();
             match id {
-                "quit" => app.exit(0),
+                "quit" => {
+                    // 프론트가 디바운스 중인 설정을 먼저 저장할 시간을 준다 (저장 디바운스 150ms)
+                    let _ = app.emit("ui://quit", ());
+                    let app = app.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(400));
+                        app.exit(0);
+                    });
+                }
                 "show" => {
                     if let Some(w) = app.get_webview_window("main") {
                         let visible = w.is_visible().unwrap_or(true);

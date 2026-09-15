@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { LazyStore } from "@tauri-apps/plugin-store";
+import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { enable as enableAutostart, disable as disableAutostart } from "@tauri-apps/plugin-autostart";
 import { WIDGETS, widgetById } from "../widgets/registry";
 import { defaultsOf, type WidgetSettings } from "../widgets/types";
 
@@ -23,6 +25,8 @@ interface Persisted {
   autoScale: boolean;
   /** 캔버스로 쓸 모니터 장치명. null = 주 모니터 */
   canvasMonitor: string | null;
+  /** Windows 시작 시 실행. 기본 true — 사용자가 끄면 false 로 기억한다. */
+  autostart: boolean;
   instances: WidgetInstance[];
 }
 
@@ -40,6 +44,7 @@ interface State extends Persisted {
   setAccent(c: string): void;
   setAutoScale(v: boolean): void;
   setCanvasMonitor(name: string | null): void;
+  setAutostart(v: boolean): Promise<void>;
   setLocked(v: boolean): void;
   openSettings(instanceId?: string | null): void;
   closeSettings(): void;
@@ -68,7 +73,7 @@ async function flush() {
   pending = null;
   const data: Persisted = {
     themeMode: s.themeMode, accent: s.accent, gridSnap: s.gridSnap, autoScale: s.autoScale,
-    canvasMonitor: s.canvasMonitor, instances: s.instances,
+    canvasMonitor: s.canvasMonitor, autostart: s.autostart, instances: s.instances,
   };
   await store.set(KEY, data);
   await store.save();
@@ -81,6 +86,8 @@ function persist(get: () => State) {
 }
 if (typeof window !== "undefined") {
   window.addEventListener("beforeunload", () => { window.clearTimeout(saveTimer); flush().catch(console.warn); });
+  // 트레이 "종료" — 백엔드가 400ms 뒤 프로세스를 끝내므로 그 전에 즉시 저장
+  listen("ui://quit", () => { window.clearTimeout(saveTimer); flush().catch(console.warn); }).catch(() => {});
   document.addEventListener("visibilitychange", () => { if (document.hidden) { window.clearTimeout(saveTimer); flush().catch(console.warn); } });
 }
 
@@ -151,6 +158,7 @@ export const useSettings = create<State>((set, get) => ({
   gridSnap: 8,
   autoScale: true,
   canvasMonitor: null,
+  autostart: true,
   instances: [],
   loaded: false,
   locked: true,
@@ -161,7 +169,7 @@ export const useSettings = create<State>((set, get) => ({
   async load() {
     const saved = await store.get<Partial<Persisted>>(KEY);
     const s: Persisted = {
-      themeMode: "translucent", accent: "#7c9cff", gridSnap: 8, autoScale: true, canvasMonitor: null,
+      themeMode: "translucent", accent: "#7c9cff", gridSnap: 8, autoScale: true, canvasMonitor: null, autostart: true,
       ...saved,
       instances: saved?.instances ?? defaultInstances(),
     };
@@ -174,6 +182,8 @@ export const useSettings = create<State>((set, get) => ({
     set({ ...s, loaded: true });
     applyTheme(s.themeMode, s.accent);
     invoke("set_canvas_monitor", { name: s.canvasMonitor }).catch(console.warn);
+    // 자동 시작은 기본 켜짐. 개발 실행(debug exe)은 등록하지 않는다.
+    if (!import.meta.env.DEV) (s.autostart ? enableAutostart() : disableAutostart()).catch(console.warn);
     const resized = s.instances.some((i, idx) => i.w !== singletoned[idx].w || i.h !== singletoned[idx].h);
     if (!saved || s.instances.length !== known.length || resized) persist(get);
   },
@@ -185,6 +195,12 @@ export const useSettings = create<State>((set, get) => ({
     set({ canvasMonitor });
     invoke("set_canvas_monitor", { name: canvasMonitor }).catch(console.warn);
     persist(get);
+  },
+  async setAutostart(autostart) {
+    set({ autostart });
+    persist(get);
+    if (import.meta.env.DEV) return;
+    await (autostart ? enableAutostart() : disableAutostart());
   },
   setLocked(locked) { set({ locked }); },
   openSettings(instanceId = null) { set({ settingsOpen: true, selected: instanceId }); },

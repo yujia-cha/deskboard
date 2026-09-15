@@ -35,7 +35,9 @@ export function WidgetFrame({ inst, children }: { inst: WidgetInstance; children
     const measure = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
-        setInner({ w: el.clientWidth - 24, h: el.clientHeight - 24 });
+        // 매초 바뀌는 위젯(시계 등)의 DOM 변경마다 호출되므로 값이 같으면 상태를 건드리지 않는다
+        const w = el.clientWidth - 24, h = el.clientHeight - 24;
+        setInner((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
         const over = Math.max(el.scrollWidth / Math.max(1, el.clientWidth), el.scrollHeight / Math.max(1, el.clientHeight));
         setFit((f) => {
           if (over > 1.01) return Math.max(0.5 / ratio, Math.round((f / over) * 1000) / 1000); // 넘침 → 축소

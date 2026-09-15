@@ -9,6 +9,7 @@
 
 pub mod calendar;
 pub mod claude_usage;
+pub mod folders;
 pub mod oauth;
 pub mod spotify;
 pub mod sysmon;
@@ -28,5 +29,6 @@ pub fn all() -> Vec<Box<dyn Provider>> {
         Box::new(claude_usage::ClaudeUsageProvider),
         Box::new(calendar::CalendarProvider),
         Box::new(spotify::SpotifyProvider),
+        Box::new(folders::FoldersProvider),
     ]
 }

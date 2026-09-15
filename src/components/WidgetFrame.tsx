@@ -82,18 +82,21 @@ export function WidgetFrame({ inst, children }: { inst: WidgetInstance; children
 
   return (
     <div
-      className={`widget ${locked ? "" : "editing"} ${def.chromeless ? "chromeless" : ""}`}
-      style={{ left: inst.x, top: inst.y, width: inst.w, height: inst.h }}
+      className={`widget ${locked ? "" : "editing"}`}
+      style={{ left: inst.x, top: inst.y, width: inst.w, height: inst.h, ...(inst.accent ? { "--accent": inst.accent } as CSSProperties : {}) }}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <div className="widget-header" onPointerDown={onDown("move")} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
-        <span className="widget-title">{def.icon ? `${def.icon} ` : ""}{def.title}</span>
-        <span className="widget-actions">
-          {zoom !== 1 && <span className="widget-scale" title="내용 배율">{Math.round(zoom * 100)}%</span>}
-          <button title="설정" onClick={() => openSettings(inst.id)}>⚙</button>
-          <button title="제거" onClick={() => removeWidget(inst.id)}>✕</button>
-        </span>
-      </div>
+      {/* 제목줄은 없다. 편집 모드에서만 이동 핸들 + 설정/제거를 내용 위에 겹쳐 그린다. 평소 설정은 설정 위젯에서. */}
+      {!locked && (
+        <div className="widget-header" title={def.title} onPointerDown={onDown("move")} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
+          <span className="widget-grip">⠿</span>
+          <span className="widget-actions">
+            {zoom !== 1 && <span className="widget-scale" title="내용 배율">{Math.round(zoom * 100)}%</span>}
+            <button title="설정" onClick={() => openSettings(inst.id)}>⚙</button>
+            {!def.singleton && <button title="제거" onClick={() => removeWidget(inst.id)}>✕</button>}
+          </span>
+        </div>
+      )}
       <div className="widget-body" style={bodyStyle} ref={bodyRef}>{children(inner)}</div>
       {!locked && <div className="widget-resize" onPointerDown={onDown("resize")} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />}
     </div>

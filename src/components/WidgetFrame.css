@@ -9,18 +9,15 @@
   transition: box-shadow .15s;
 }
 .widget.editing { box-shadow: 0 0 0 2px var(--accent), 0 8px 24px rgba(0,0,0,.3); }
+/* 편집 모드 전용 오버레이 핸들 (제목 없음) */
 .widget-header {
+  position: absolute; inset: 0 0 auto 0; z-index: 2;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 6px 12px; font-size: 12px; color: var(--text-dim);
-  border-bottom: 1px solid var(--border);
-  flex: 0 0 auto;
+  padding: 4px 8px; font-size: 12px; color: var(--text-dim); cursor: move;
+  background: linear-gradient(var(--surface-strong), transparent);
 }
-.widget.chromeless .widget-header { position: absolute; inset: 0 0 auto 0; border: 0; background: transparent; opacity: 0; z-index: 2; }
-.widget.chromeless.editing .widget-header,
-.widget.chromeless:hover .widget-header { opacity: 1; background: linear-gradient(var(--surface-strong), transparent); }
-.widget.editing .widget-header { cursor: move; }
-.widget-actions { display: none; gap: 4px; }
-.widget:hover .widget-actions, .widget.editing .widget-actions { display: inline-flex; }
+.widget-grip { letter-spacing: -1px; }
+.widget-actions { display: inline-flex; gap: 4px; }
 .widget-actions button {
   background: transparent; border: 0; color: var(--text-dim); padding: 0 4px; border-radius: 6px; line-height: 1;
 }

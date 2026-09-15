@@ -8,7 +8,6 @@ export const clockWidget: WidgetDefinition<ClockSettings> = {
   component: Clock,
   defaultSize: { w: 300, h: 140 },
   minSize: { w: 180, h: 90 },
-  chromeless: true,
   settingsSchema: [
     { key: "digitStyle", label: "숫자 스타일", type: "select", default: "blocks",
       options: [
@@ -16,7 +15,7 @@ export const clockWidget: WidgetDefinition<ClockSettings> = {
         { value: "dots", label: "도트 매트릭스 (문자)" },
         { value: "system", label: "시스템 폰트" },
       ] },
-    { key: "blockColor", label: "블록 색 (비우면 강조색)", type: "text", default: "#4fd1c5", placeholder: "#4fd1c5" },
+    { key: "blockColor", label: "블록 색 (비우면 강조색)", type: "text", default: "", placeholder: "#4fd1c5" },
     { key: "dotChar", label: "도트 문자 (도트 매트릭스용)", type: "text", default: "■", placeholder: "■ 🟦 ⬜ ●" },
     { key: "hour12", label: "12시간제", type: "boolean", default: false },
     { key: "seconds", label: "초 표시", type: "boolean", default: true },

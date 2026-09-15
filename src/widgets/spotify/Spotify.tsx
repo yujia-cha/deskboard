@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useProviderData } from "../../core/ipc";
+import { useSettings } from "../../core/settings";
 import type { WidgetProps } from "../types";
+import { VolumeControl } from "./VolumeControl";
+import { clampVolume, toggleMute } from "./volume";
 import "./Spotify.css";
 
 export interface SpotifySettings extends Record<string, unknown> {
@@ -12,18 +15,22 @@ export interface SpotifySettings extends Record<string, unknown> {
 interface Status { client_id: string; redirect_uri: string; logged_in: boolean; login_in_progress: boolean; display_name: string; premium: boolean; error: string | null }
 interface Playback {
   is_playing: boolean; progress_ms: number; duration_ms: number; track_id: string | null; title: string; artists: string; album: string;
-  art_url: string | null; device_name: string; volume: number; context_uri: string | null; shuffle: boolean; repeat: string; fetched_at: number;
+  art_url: string | null; volume: number; context_uri: string | null; shuffle: boolean; repeat: string; fetched_at: number;
 }
 interface Playlist { uri: string; name: string; total: number; owner: string; image: string | null }
 
 const mmss = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
 
-export function Spotify({ settings, size }: WidgetProps<SpotifySettings>) {
+export function Spotify({ instanceId, settings, size }: WidgetProps<SpotifySettings>) {
   const status = useProviderData<Status>("spotify://status", "spotify_status");
   const playback = useProviderData<Playback | null>("spotify://playback", "spotify_last_playback");
+  const accent = useSettings((s) => s.instances.find((i) => i.id === instanceId)?.accent);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [volume, setVolume] = useState(0);
+  const draggingVolume = useRef(false);
+  const prevVolume = useRef<number | null>(null);
 
   // 위젯이 보이는 동안만 백엔드 폴링
   useEffect(() => {
@@ -44,6 +51,24 @@ export function Spotify({ settings, size }: WidgetProps<SpotifySettings>) {
   const control = async (action: string, arg?: string) => {
     setError(null);
     try { await invoke("spotify_control", { action, arg }); } catch (e) { setError(String(e)); }
+  };
+
+  // 서버 볼륨 반영 — 드래그 중에는 내 값이 우선(덮어쓰지 않음)
+  useEffect(() => {
+    if (playback && !draggingVolume.current) setVolume(playback.volume);
+  }, [playback?.volume]);
+
+  const handleVolumeChange = (percent: number, final: boolean) => {
+    draggingVolume.current = !final;
+    const v = clampVolume(percent);
+    setVolume(v);
+    control("volume", String(v));
+  };
+  const handleToggleMute = () => {
+    const next = toggleMute({ volume, prevVolume: prevVolume.current });
+    prevVolume.current = next.prevVolume;
+    setVolume(next.volume);
+    control("volume", String(next.volume));
   };
 
   if (!status) return <div className="dim">불러오는 중…</div>;
@@ -81,8 +106,8 @@ export function Spotify({ settings, size }: WidgetProps<SpotifySettings>) {
               {playback?.is_playing ? "⏸" : "▶"}
             </button>
             <button onClick={() => control("next")} title="다음">⏭</button>
-            {!compact && playback?.device_name && <span className="sp-device dim" title="재생 디바이스">{playback.device_name}</span>}
             <span style={{ flex: 1 }} />
+            <VolumeControl instanceId={instanceId} volume={volume} accent={accent} onVolumeChange={handleVolumeChange} onToggleMute={handleToggleMute} />
             <button className="sp-icon" title="새로고침" onClick={() => invoke("spotify_refresh").catch((e) => setError(String(e)))}>↻</button>
             <button className="sp-icon" title="로그아웃" onClick={() => invoke("spotify_logout")}>⏻</button>
           </div>

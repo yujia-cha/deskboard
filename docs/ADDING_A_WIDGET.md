@@ -23,12 +23,18 @@ export const helloWidget: WidgetDefinition<HelloSettings> = {
   component: Hello,
   defaultSize: { w: 240, h: 120 },
   minSize: { w: 160, h: 80 },
-  chromeless: false,               // true 면 헤더 숨김 (시계처럼)
+  // 위젯에는 제목줄이 없다. 편집 모드에서만 이동 핸들·⚙·✕ 가 내용 위에 겹쳐진다.
+  // singleton: true,              // 항상 하나, 제거 불가 (설정 위젯 전용)
   settingsSchema: [                // 선언만 하면 설정 패널이 자동 생성된다
     { key: "name", label: "이름", type: "text", default: "world" },
     { key: "loud", label: "크게", type: "boolean", default: false },
   ],
 };
+```
+
+`type: "path"` 필드(`pick: "image" | "directory"`)를 선언하면 설정 패널에 텍스트 + "찾아보기"(`@tauri-apps/plugin-dialog` `open()`) + "지우기" 버튼이 자동 생성된다:
+```ts
+    { key: "bg", label: "배경 이미지", type: "path", pick: "image", default: "" },
 ```
 
 ```tsx

@@ -19,6 +19,7 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             window::build_tray(app.handle())?;
             window::start_hit_test(app.handle().clone());
@@ -51,6 +52,15 @@ pub fn run() {
             providers::spotify::spotify_logout,
             providers::spotify::spotify_refresh,
             providers::spotify::spotify_control,
+            providers::folders::folder_ensure_dir,
+            providers::folders::folder_list,
+            providers::folders::folder_launch,
+            providers::folders::folder_reveal,
+            providers::folders::folder_add,
+            providers::folders::folder_take_out,
+            providers::folders::folder_recycle,
+            providers::folders::folder_read_image,
+            providers::folders::folder_watch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running deskboard");

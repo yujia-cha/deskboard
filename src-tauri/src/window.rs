@@ -181,6 +181,17 @@ fn cursor_pos() -> Option<(i32, i32)> {
 #[cfg(not(target_os = "windows"))]
 fn cursor_pos() -> Option<(i32, i32)> { None }
 
+/// 마우스 왼쪽/오른쪽 버튼이 눌려 있거나 직전 폴링 이후 눌린 적이 있는지.
+#[cfg(target_os = "windows")]
+fn mouse_pressed() -> bool {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
+    // SAFETY: GetAsyncKeyState 는 인자 외 상태를 요구하지 않는다.
+    let down = |vk: u16| unsafe { GetAsyncKeyState(vk as i32) } as u16 & 0x8001 != 0;
+    down(VK_LBUTTON) || down(VK_RBUTTON)
+}
+#[cfg(not(target_os = "windows"))]
+fn mouse_pressed() -> bool { false }
+
 pub fn start_hit_test(app: AppHandle) {
     app.manage(HitRegions(Mutex::new(HitState::default())));
     if let Some(r) = fit_to_work_area(&app, None) {
@@ -190,6 +201,7 @@ pub fn start_hit_test(app: AppHandle) {
         .name("hit-test".into())
         .spawn(move || {
             let mut ignoring = false;
+            let mut was_pressed = false;
             let mut tick: u32 = 0;
             loop {
                 std::thread::sleep(std::time::Duration::from_millis(50));
@@ -227,6 +239,14 @@ pub fn start_hit_test(app: AppHandle) {
                         ignoring = want_ignore;
                     }
                 }
+
+                // 히트 영역 밖(바탕화면·다른 앱) 클릭 알림 — 팝업 닫기용.
+                // 창 blur 는 always-on-bottom 창에서 클릭 직후에도 발생해 쓸 수 없다.
+                let pressed = mouse_pressed();
+                if pressed && !was_pressed && want_ignore {
+                    let _ = app.emit("hit://outside-press", ());
+                }
+                was_pressed = pressed;
             }
         })
         .expect("spawn hit-test thread");

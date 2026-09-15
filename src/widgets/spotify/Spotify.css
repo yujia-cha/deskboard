@@ -13,7 +13,6 @@
 .sp-controls button:hover { background: rgba(255,255,255,.12); }
 .sp-controls .sp-play { background: var(--text); color: var(--on-light); width: 30px; height: 30px; }
 .sp-controls .sp-icon { color: var(--text-dim); font-size: 12px; }
-.sp-device { font-size: 10px; margin-left: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px; }
 .sp-error { color: var(--danger); font-size: 11px; }
 .sp-lists { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--border); padding-top: 6px; }
 .sp-list { display: flex; align-items: center; gap: 8px; background: transparent; border: 0; color: var(--text); text-align: left; padding: 4px 6px; border-radius: 8px; }

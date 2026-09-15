@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { contentScale, useSettings } from "../core/settings";
 import { WIDGETS, widgetById } from "../widgets/registry";
@@ -73,12 +74,21 @@ export function SettingsPanel() {
               <div className="row dim"><span>내용 배율</span><span>{s.autoScale ? `${Math.round(contentScale(inst, true) * 100)}% (넘치면 자동 축소)` : "100% (넘치면 자동 축소)"}</span></div>
             </section>
             <section>
+              <h4>색상</h4>
+              <label className="row"><span>강조색</span>
+                <span className="pair">
+                  <input type="color" value={inst.accent ?? s.accent} onChange={(e) => s.setInstanceAccent(inst.id, e.target.value)} />
+                  {inst.accent && <button onClick={() => s.setInstanceAccent(inst.id, null)}>전역 색 사용</button>}
+                </span>
+              </label>
+            </section>
+            <section>
               <h4>옵션</h4>
               {(def.settingsSchema ?? []).length === 0 && <p className="dim">이 위젯은 옵션이 없습니다.</p>}
               {def.settingsSchema?.map((f) => (
                 <Field key={f.key} f={f} value={inst.settings[f.key]} onChange={(v) => s.updateWidgetSettings(inst.id, { [f.key]: v })} />
               ))}
-              <button className="danger" onClick={() => { s.removeWidget(inst.id); }}>위젯 제거</button>
+              {!def.singleton && <button className="danger" onClick={() => { s.removeWidget(inst.id); }}>위젯 제거</button>}
             </section>
           </>
         ) : (
@@ -117,7 +127,7 @@ export function SettingsPanel() {
             <section>
               <h4>위젯 추가</h4>
               <div className="widget-list">
-                {WIDGETS.map((w) => (
+                {WIDGETS.filter((w) => !w.singleton).map((w) => (
                   <button key={w.id} onClick={() => { s.addWidget(w.id); }}>{w.icon} {w.title}</button>
                 ))}
               </div>
@@ -151,5 +161,21 @@ function Field({ f, value, onChange }: { f: SettingField; value: unknown; onChan
         <select value={String(value)} onChange={(e) => onChange(e.target.value)}>
           {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select></label>;
+    case "path": {
+      const pick = async () => {
+        const selected = await openDialog({
+          directory: f.pick === "directory",
+          multiple: false,
+          filters: f.pick === "image" ? [{ name: "이미지", extensions: ["png", "jpg", "jpeg", "ico", "webp", "gif"] }] : undefined,
+        }).catch(() => null);
+        if (typeof selected === "string") onChange(selected);
+      };
+      return <label className="row"><span>{f.label}</span>
+        <span className="pair">
+          <input type="text" value={String(value ?? "")} readOnly title={String(value ?? "")} />
+          <button onClick={pick}>찾아보기</button>
+          {value ? <button onClick={() => onChange("")}>지우기</button> : null}
+        </span></label>;
+    }
   }
 }

@@ -13,6 +13,7 @@ export default function App() {
   const locked = useSettings((s) => s.locked);
   const settingsOpen = useSettings((s) => s.settingsOpen);
   const instances = useSettings((s) => s.instances);
+  const overlayRects = useSettings((s) => s.overlayRects);
   const setLocked = useSettings((s) => s.setLocked);
   const toggleTheme = useSettings((s) => s.toggleTheme);
   const openSettings = useSettings((s) => s.openSettings);
@@ -33,9 +34,12 @@ export default function App() {
   // 히트 영역: 잠금 상태에서 위젯 밖 클릭은 바탕화면(아이콘)으로 통과시킨다.
   useEffect(() => {
     if (!loaded) return;
-    const rects = instances.map((i) => ({ x: i.x, y: i.y, w: i.w, h: i.h }));
+    const rects = [
+      ...instances.map((i) => ({ x: i.x, y: i.y, w: i.w, h: i.h })),
+      ...Object.values(overlayRects),
+    ];
     invoke("set_hit_regions", { rects, enabled: locked && !settingsOpen }).catch(console.warn);
-  }, [loaded, instances, locked, settingsOpen]);
+  }, [loaded, instances, overlayRects, locked, settingsOpen]);
 
   if (!loaded) return null;
   return (

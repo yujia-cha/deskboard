@@ -23,9 +23,12 @@ export function SettingsPanel() {
   const inst = s.instances.find((i) => i.id === s.selected);
   const def = inst ? widgetById(inst.widgetId) : undefined;
   const [monitors, setMonitors] = useState<{ name: string; primary: boolean; work: { w: number; h: number } }[]>([]);
+  const [autoStatus, setAutoStatus] = useState<{ enabled: boolean; path: string | null; dev: boolean } | null>(null);
+  const refreshAutoStatus = () => invoke<typeof autoStatus>("autostart_status").then(setAutoStatus).catch(() => setAutoStatus(null));
   useEffect(() => {
     invoke<typeof monitors>("list_monitors").then(setMonitors).catch(() => setMonitors([]));
-  }, []);
+    refreshAutoStatus();
+  }, [s.settingsOpen]);
 
   if (!s.settingsOpen) return null;
 
@@ -114,8 +117,13 @@ export function SettingsPanel() {
                 <input type="checkbox" checked={!s.locked} onChange={(e) => s.setLocked(!e.target.checked)} />
               </label>
               <label className="row" title={import.meta.env.DEV ? "개발 실행 중에는 등록하지 않습니다" : "설치된 deskboard 를 로그인 시 자동 실행"}><span>Windows 시작 시 실행</span>
-                <input type="checkbox" checked={s.autostart} onChange={(e) => { s.setAutostart(e.target.checked).catch(console.warn); }} />
+                <input type="checkbox" checked={s.autostart} onChange={(e) => { s.setAutostart(e.target.checked).catch(console.warn).finally(refreshAutoStatus); }} />
               </label>
+              <div className="dim" style={{ fontSize: 11, wordBreak: "break-all" }}>
+                {autoStatus?.dev ? "개발 실행에서는 등록하지 않습니다 (설치본에서 적용)"
+                  : autoStatus?.enabled ? `등록됨: ${autoStatus.path}`
+                  : "등록 안 됨"}
+              </div>
             </section>
             <section>
               <h4>위젯 추가</h4>

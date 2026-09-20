@@ -182,8 +182,7 @@ export const useSettings = create<State>((set, get) => ({
     set({ ...s, loaded: true });
     applyTheme(s.themeMode, s.accent);
     invoke("set_canvas_monitor", { name: s.canvasMonitor }).catch(console.warn);
-    // 자동 시작은 기본 켜짐. 개발 실행(debug exe)은 등록하지 않는다.
-    if (!import.meta.env.DEV) (s.autostart ? enableAutostart() : disableAutostart()).catch(console.warn);
+    // 자동 시작 등록은 백엔드(autostart.rs::sync)가 시작 시 `autostart` 값에 맞춰 처리한다.
     const resized = s.instances.some((i, idx) => i.w !== singletoned[idx].w || i.h !== singletoned[idx].h);
     if (!saved || s.instances.length !== known.length || resized) persist(get);
   },

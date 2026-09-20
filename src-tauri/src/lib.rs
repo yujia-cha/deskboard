@@ -4,21 +4,25 @@
 //! - `window`    : 투명/Acrylic 전환, 트레이 메뉴
 //! - `providers` : 데이터 소스 플러그인 (`Provider` 트레이트). 새 위젯의 백엔드는 여기에 추가한다.
 
+mod autostart;
 mod providers;
 mod window;
-
-use tauri::Manager;
 
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    tauri::Builder::default()
-        // 두 번 실행(자동 시작 + 수동 실행)돼도 대시보드는 하나만 — 기존 창을 보여주고 새 프로세스는 종료
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.show();
-            }
-        }))
+    let builder = tauri::Builder::default();
+    // 두 번 실행(자동 시작 + 수동 실행)돼도 대시보드는 하나만 — 기존 창을 보여주고 새 프로세스는 종료.
+    // 설치본과 개발 실행이 서로를 가로막지 않도록 release 빌드에서만 건다.
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        use tauri::Manager;
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.show();
+        }
+    }));
+
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -30,6 +34,7 @@ pub fn run() {
         .setup(|app| {
             window::build_tray(app.handle())?;
             window::start_hit_test(app.handle().clone());
+            autostart::sync(app.handle());
 
             for provider in providers::all() {
                 log::info!("starting provider `{}`", provider.id());
@@ -38,6 +43,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            autostart::autostart_status,
             window::list_monitors,
             window::set_canvas_monitor,
             providers::claude_usage::get_claude_usage,

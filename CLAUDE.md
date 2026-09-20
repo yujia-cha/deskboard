@@ -38,8 +38,8 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
 ```
 
 ## 시작/종료
-- 자동 시작: `settings.ts::load` 에서 `autostart`(기본 true) 에 따라 plugin-autostart enable/disable. 개발 실행(`import.meta.env.DEV`)에서는 등록하지 않는다.
-- 단일 인스턴스: `tauri-plugin-single-instance` — 두 번째 실행은 기존 창 `show()` 후 종료.
+- 자동 시작: `autostart.rs::sync` 가 시작 시 `settings.json` 의 `v1.autostart`(기본 true) 에 맞춰 HKCU Run 값을 enable/disable (enable 은 현재 exe 경로로 덮어써 교정). **debug 빌드는 절대 등록하지 않고**, Run 값이 `\target\debug|release\` 를 가리키면 지운다. 설정 토글은 `settings.ts::setAutostart`.
+- 단일 인스턴스: `tauri-plugin-single-instance` — release 빌드에서만. 두 번째 실행은 기존 창 `show()` 후 종료.
 - 트레이 종료: `ui://quit` 이벤트로 프론트가 설정을 즉시 저장한 뒤 400ms 후 `app.exit`.
 
 ## 창 동작

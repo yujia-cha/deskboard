@@ -27,7 +27,8 @@ npm run tauri dev
 | Spotify | [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) 에서 앱 생성 → Redirect URI `http://127.0.0.1:8888/callback` 추가 → Client ID 를 위젯에 입력. 재생 제어는 Premium 계정만 |
 
 ## 자동 시작
-설치본은 Windows 로그인 시 자동으로 실행됩니다(기본 켜짐). 설정 → "Windows 시작 시 실행" 에서 끌 수 있습니다.
+설치본은 Windows 로그인 시 자동으로 실행됩니다(기본 켜짐). 설정 → "Windows 시작 시 실행" 에서 끌 수 있고, 그 아래에 실제 등록 경로가 표시됩니다.
+작업 관리자 → 시작 앱에서 deskboard 가 "사용 안 함" 이면 Windows 가 실행을 막으므로 거기서도 켜져 있어야 합니다.
 이미 실행 중일 때 다시 실행하면 새 창을 만들지 않고 기존 대시보드를 보여줍니다.
 
 ## 트레이 메뉴

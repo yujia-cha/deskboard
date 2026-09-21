@@ -9,25 +9,51 @@
 .gh-num.on { color: var(--text); }
 .gh-label { font-size: var(--fs-meta); white-space: nowrap; }
 
-.gh-checks {
+/* 기여도 달력 — 열이 한 주, 행이 요일 */
+.gh-grass { flex: 0 0 auto; display: flex; flex-direction: column; gap: 3px; }
+.gh-grid { display: grid; grid-auto-flow: column; justify-content: start; }
+.gh-cell { border-radius: 2px; background: var(--track); }
+/* 단계는 강조색 농도로 — 팔레트가 바뀌어도 한 벌로 따라온다 */
+.gh-cell.lv1 { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+.gh-cell.lv2 { background: color-mix(in srgb, var(--accent) 50%, transparent); }
+.gh-cell.lv3 { background: color-mix(in srgb, var(--accent) 75%, transparent); }
+.gh-cell.lv4 { background: var(--accent); }
+.gh-grass-total {
+  background: transparent; border: 0; padding: 0; text-align: left;
+  color: var(--text-dim); font-size: var(--fs-micro); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.gh-grass-total:hover { color: var(--accent); }
+
+/* 저장소별 현황 */
+.gh-repos {
   flex: 1 1 auto; min-height: 0; overflow: auto;
-  display: flex; flex-direction: column; gap: 1px;
+  display: flex; flex-direction: column; gap: 2px;
   border-top: 1px solid var(--border); padding-top: 4px;
 }
-.gh-check {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 6px;
-  background: transparent; border: 0; color: var(--text); text-align: left;
-  padding: 1px 4px; border-radius: 6px; font-size: var(--fs-meta);
+.gh-repo-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.gh-repo-name {
+  background: transparent; border: 0; color: var(--text); padding: 0; text-align: left;
+  font-size: var(--fs-meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
 }
-.gh-check:hover { background: var(--fill); }
-.gh-repo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gh-branch { font-family: var(--mono); font-size: var(--fs-micro); white-space: nowrap; max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+.gh-repo-name:hover { color: var(--accent); }
+.gh-badges { margin-left: auto; display: inline-flex; gap: 3px; flex: 0 0 auto; }
+.gh-badge {
+  background: var(--fill); border: 0; border-radius: 999px; color: var(--text);
+  padding: 1px 6px; font-size: var(--fs-micro); line-height: 1.4; white-space: nowrap;
+}
+.gh-badge:hover { background: var(--fill-hover); }
+.gh-badge.dim { background: transparent; color: var(--text-dim); padding: 1px 2px; }
+.gh-badge.dim:hover { color: var(--text); background: var(--fill); }
+/* 내 차례인 것만 색을 쓴다 */
+.gh-badge.alert { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
+.gh-badge.warn { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
+
+.gh-dot { background: transparent; border: 0; padding: 0; font-size: var(--fs-meta); line-height: 1; }
 /* 아직 도는 중인 워크플로를 실패로 칠하지 않는다 */
 .gh-dot.state-success { color: var(--ok); }
 .gh-dot.state-failure { color: var(--danger); }
 .gh-dot.state-running { color: var(--warn); }
-.gh-dot.state-cancelled,
-.gh-dot.state-skipped,
 .gh-dot.state-unknown { color: var(--text-dim); }
 
 .gh-login { height: 100%; display: flex; flex-direction: column; gap: 6px; justify-content: center; font-size: var(--fs-label); }
@@ -38,7 +64,7 @@
 .gh-login-row input { flex: 1; min-width: 0; background: var(--fill); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; }
 .gh-login-row button { background: var(--fill-hover); border: 0; color: var(--text); border-radius: 999px; padding: 4px 12px; }
 .gh-login-row button:disabled { opacity: .5; cursor: default; }
-.gh-error { color: var(--warn); font-size: var(--fs-meta); }
+.gh-error { color: var(--warn); font-size: var(--fs-meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gh-hint { font-size: var(--fs-micro); }
 .gh-logout { background: transparent; border: 0; color: var(--text-dim); padding: 0; font-size: var(--fs-micro); text-decoration: underline; align-self: flex-start; }
 .gh-logout:hover { color: var(--danger); }

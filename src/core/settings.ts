@@ -3,6 +3,7 @@ import { LazyStore } from "@tauri-apps/plugin-store";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { enable as enableAutostart, disable as disableAutostart } from "@tauri-apps/plugin-autostart";
+import { clampToBounds } from "./layout";
 import { WIDGETS, widgetById } from "../widgets/registry";
 import { defaultsOf, type WidgetSettings } from "../widgets/types";
 
@@ -28,12 +29,18 @@ interface Persisted {
   /** 카드 표면의 불투명도 0~100. 낮출수록 뒤의 블러된 배경화면이 비친다. */
   surfaceOpacity: number;
   /**
-   * 배경화면 블러 패스 수 1~6. **0 = 끔(기본값)** — 카드는 단색/반투명 표면만 쓴다.
-   * 켜면 화면을 주기적으로 캡처하므로 공짜가 아니다. 끄면 백엔드 캡처 루프도 멈춘다.
+   * 배경화면 블러 패스 수 1~6. **0 = 끔.** 기본 3 —
+   * 캡처를 GDI 안에서 줄여 받고 안 바뀌면 아무 일도 하지 않게 되어(`providers/wallpaper`)
+   * 상시로 켜 둘 만큼 싸졌다. 0 으로 내리면 백엔드 캡처 루프까지 멈춘다.
    */
   blurStrength: number;
   /** 카드 모서리 반경 px. */
   cornerRadius: number;
+  /**
+   * 카드 테두리 진하기 0~100. 기본 65 — 배경화면 위에서 카드 경계가 묻히지 않는 값이다.
+   * 0 이면 거의 안 보이는 실선, 100 이면 편집 모드 링에 가까울 만큼 또렷하다.
+   */
+  borderStrength: number;
   accent: string;
   gridSnap: number;
   /** 위젯 내용을 크기에 맞춰 확대/축소 */
@@ -50,6 +57,8 @@ interface State extends Persisted {
   locked: boolean;           // 편집 잠금 (저장 안 함, 시작 시 항상 잠김)
   settingsOpen: boolean;
   selected: string | null;   // 설정 패널에서 보는 인스턴스
+  /** 편집 모드에서 고른 위젯들 (여러 개 동시 이동). 저장 안 함 — 잠그면 비운다. */
+  selection: string[];
   /** 위젯 사각형 밖으로 펼쳐지는 팝업(폴더 등)의 히트 영역. 저장 안 함. */
   overlayRects: Record<string, Rect>;
   /** 배경화면을 어디서 얻었는지 — 설정 패널에 보여준다. 저장 안 함. */
@@ -64,6 +73,7 @@ interface State extends Persisted {
   setSurfaceOpacity(v: number): void;
   setBlurStrength(v: number): void;
   setCornerRadius(v: number): void;
+  setBorderStrength(v: number): void;
   setAccent(c: string): void;
   setAutoScale(v: boolean): void;
   setCanvasMonitor(name: string | null): void;
@@ -75,6 +85,12 @@ interface State extends Persisted {
   removeWidget(instanceId: string): void;
   resetLayout(): void;
   moveResize(instanceId: string, rect: Partial<Pick<WidgetInstance, "x" | "y" | "w" | "h">>): void;
+  /** 여러 위젯을 한 번에 옮긴다 (마키 선택 후 드래그). */
+  moveMany(moves: { id: string; x: number; y: number }[]): void;
+  clampAll(bounds: { w: number; h: number }): void;
+  setSelection(ids: string[]): void;
+  toggleSelected(id: string): void;
+  clearSelection(): void;
   updateWidgetSettings(instanceId: string, patch: WidgetSettings): void;
   setInstanceAccent(instanceId: string, accent: string | null): void;
   setOverlayRect(id: string, rect: Rect | null): void;
@@ -101,7 +117,7 @@ export const resolvePalette = (
 
 type ThemeBits = Pick<
   Persisted,
-  "themeMode" | "palette" | "cardStyle" | "accent" | "surfaceOpacity" | "cornerRadius"
+  "themeMode" | "palette" | "cardStyle" | "accent" | "surfaceOpacity" | "cornerRadius" | "borderStrength"
 >;
 
 function applyTheme(s: ThemeBits) {
@@ -112,6 +128,7 @@ function applyTheme(s: ThemeBits) {
   d.style.setProperty("--accent", s.accent);
   d.style.setProperty("--surface-alpha", String(clamp(s.surfaceOpacity, 0, 100) / 100));
   d.style.setProperty("--radius", `${clamp(s.cornerRadius, 0, 40)}px`);
+  d.style.setProperty("--border-k", String(clamp(s.borderStrength, 0, 100) / 100));
 }
 
 const clamp = (v: number, lo: number, hi: number) =>
@@ -134,6 +151,7 @@ async function flush() {
   const data: Persisted = {
     themeMode: s.themeMode, palette: s.palette, cardStyle: s.cardStyle,
     surfaceOpacity: s.surfaceOpacity, blurStrength: s.blurStrength, cornerRadius: s.cornerRadius,
+    borderStrength: s.borderStrength,
     accent: s.accent, gridSnap: s.gridSnap, autoScale: s.autoScale,
     canvasMonitor: s.canvasMonitor, autostart: s.autostart, instances: s.instances,
   };
@@ -167,7 +185,7 @@ export function findFreeSlot(existing: R[], w: number, h: number, bounds = { w: 
 }
 
 /** 구버전 저장값 마이그레이션 (사용자가 직접 고르지 않은 옛 기본값만 바꾼다). */
-export function migrate(widgetId: string, saved: WidgetSettings): WidgetSettings {
+export function migrate(widgetId: string, saved: WidgetSettings, instanceId = ""): WidgetSettings {
   const out = { ...saved };
   // 시계 v1 기본값(dots + long)은 블록 스타일 도입 전 값 → 새 기본으로
   if (widgetId === "clock" && !("blockColor" in out)) {
@@ -176,6 +194,19 @@ export function migrate(widgetId: string, saved: WidgetSettings): WidgetSettings
   }
   // 시계 블록 색 옛 하드코딩 기본값("#4fd1c5") → 빈 값(전역/위젯 강조색 사용)
   if (widgetId === "clock" && out.blockColor === "#4fd1c5") out.blockColor = "";
+  // GitHub v1 의 "CI 상태"(showChecks)는 저장소 줄로 흡수됐다 — 꺼 뒀던 사람이
+  // 갑자기 목록을 보게 되지 않도록 그 뜻을 새 키로 옮긴다.
+  if (widgetId === "github" && "showChecks" in out && !("showRepos" in out)) out.showRepos = out.showChecks;
+  // 폴더 v1 은 경로 칸 하나였다 ("비우면 자동 생성"). 이제 두 모드가 나뉘었으므로 저장된
+  // 경로가 무엇이었는지로 가른다 — 전용 폴더의 경로는 `.../folders/<인스턴스 id>` 로 끝난다.
+  // 그 경우 `dir` 은 지운다. 남겨 두면 다른 PC 에서 남의 계정 경로를 연결하려 든다.
+  if (widgetId === "folder" && !("source" in out)) {
+    const dir = String(out.dir ?? "").trim();
+    const managed = !dir
+      || (!!instanceId && dir.replace(/\\/g, "/").toLowerCase().endsWith(`/folders/${instanceId.toLowerCase()}`));
+    out.source = managed ? "managed" : "link";
+    if (managed) out.dir = "";
+  }
   return out;
 }
 
@@ -219,8 +250,9 @@ export const useSettings = create<State>((set, get) => ({
   palette: "dark",
   cardStyle: "glass",
   surfaceOpacity: 62,
-  blurStrength: 0,
+  blurStrength: 3,
   cornerRadius: 16,
+  borderStrength: 65,
   accent: "#7c9cff",
   gridSnap: 8,
   autoScale: true,
@@ -231,6 +263,7 @@ export const useSettings = create<State>((set, get) => ({
   locked: true,
   settingsOpen: false,
   selected: null,
+  selection: [],
   overlayRects: {},
   wallpaperSource: null,
   wallpaperError: null,
@@ -239,7 +272,7 @@ export const useSettings = create<State>((set, get) => ({
     const saved = await store.get<Partial<Persisted>>(KEY);
     const s: Persisted = {
       themeMode: "translucent", palette: "dark", cardStyle: "glass",
-      surfaceOpacity: 62, blurStrength: 0, cornerRadius: 16,
+      surfaceOpacity: 62, blurStrength: 3, cornerRadius: 16, borderStrength: 65,
       accent: "#7c9cff", gridSnap: 8, autoScale: true, canvasMonitor: null, autostart: true,
       ...saved,
       instances: saved?.instances ?? defaultInstances(),
@@ -247,14 +280,21 @@ export const useSettings = create<State>((set, get) => ({
     // 레지스트리에서 사라진 위젯은 버리고, 스키마 기본값은 채운다.
     const known = s.instances
       .filter((i) => widgetById(i.widgetId))
-      .map((i) => ({ ...i, settings: { ...defaultsOf(widgetById(i.widgetId)!.settingsSchema), ...migrate(i.widgetId, i.settings) } }));
+      .map((i) => ({ ...i, settings: { ...defaultsOf(widgetById(i.widgetId)!.settingsSchema), ...migrate(i.widgetId, i.settings, i.id) } }));
     const singletoned = ensureSingletons(known);
-    s.instances = normalizeSettingsSize(singletoned);
+    const normalized = normalizeSettingsSize(singletoned);
+    // 다른 해상도·배율·모니터에서 저장된 배치는 화면 밖에 남을 수 있다 — 보이는 자리로 접는다.
+    //
+    // **접은 결과를 그 자리에서 저장하지는 않는다.** 이 시점의 `window.innerWidth` 가 아직
+    // 작업영역 크기가 아닐 수 있다 (백엔드 `fit_to_work_area` 가 실패했거나 늦은 경우 창은
+    // `tauri.conf.json` 의 1100×700 이다). 그 크기로 접어 저장해 버리면 넓은 화면에서 짜 둔
+    // 배치가 한 번에 뭉개지고 되돌릴 수 없다. 화면에 보이는 것만 고치고, 디스크에는
+    // 사용자가 실제로 무언가를 옮겼을 때 함께 적힌다.
     set({ ...s, loaded: true });
     applyTheme(s);
     invoke("set_canvas_monitor", { name: s.canvasMonitor }).catch(console.warn);
     // 자동 시작 등록은 백엔드(autostart.rs::sync)가 시작 시 `autostart` 값에 맞춰 처리한다.
-    const resized = s.instances.some((i, idx) => i.w !== singletoned[idx].w || i.h !== singletoned[idx].h);
+    const resized = normalized.some((i, idx) => i.w !== singletoned[idx].w || i.h !== singletoned[idx].h);
     if (!saved || s.instances.length !== known.length || resized) persist(get);
   },
   setThemeMode(themeMode) { set({ themeMode }); applyTheme(get()); persist(get); },
@@ -264,6 +304,7 @@ export const useSettings = create<State>((set, get) => ({
   setSurfaceOpacity(surfaceOpacity) { set({ surfaceOpacity }); applyTheme(get()); persist(get); },
   setBlurStrength(blurStrength) { set({ blurStrength }); persist(get); },
   setCornerRadius(cornerRadius) { set({ cornerRadius }); applyTheme(get()); persist(get); },
+  setBorderStrength(borderStrength) { set({ borderStrength }); applyTheme(get()); persist(get); },
   setAccent(accent) { set({ accent }); applyTheme(get()); persist(get); },
   setAutoScale(autoScale) { set({ autoScale }); persist(get); },
   setCanvasMonitor(canvasMonitor) {
@@ -277,7 +318,8 @@ export const useSettings = create<State>((set, get) => ({
     if (import.meta.env.DEV) return;
     await (autostart ? enableAutostart() : disableAutostart());
   },
-  setLocked(locked) { set({ locked }); },
+  // 잠그면 선택은 의미가 없다 — 다음 편집이 항상 빈 선택에서 시작하도록 비운다.
+  setLocked(locked) { set(locked ? { locked, selection: [] } : { locked }); },
   openSettings(instanceId = null) { set({ settingsOpen: true, selected: instanceId }); },
   closeSettings() { set({ settingsOpen: false, selected: null }); },
   addWidget(widgetId) {
@@ -293,17 +335,45 @@ export const useSettings = create<State>((set, get) => ({
   removeWidget(instanceId) {
     const inst = get().instances.find((i) => i.id === instanceId);
     if (inst && widgetById(inst.widgetId)?.singleton) return;
-    set({ instances: get().instances.filter((i) => i.id !== instanceId), selected: null });
+    set({
+      instances: get().instances.filter((i) => i.id !== instanceId),
+      selected: null,
+      selection: get().selection.filter((id) => id !== instanceId),
+    });
     persist(get);
   },
   resetLayout() {
-    set({ instances: defaultInstances(), selected: null });
+    set({ instances: defaultInstances(), selected: null, selection: [] });
     persist(get);
   },
   moveResize(instanceId, rect) {
     set({ instances: get().instances.map((i) => (i.id === instanceId ? { ...i, ...rect } : i)) });
     persist(get);
   },
+  moveMany(moves) {
+    if (moves.length === 0) return;
+    const by = new Map(moves.map((m) => [m.id, m]));
+    set({ instances: get().instances.map((i) => { const m = by.get(i.id); return m ? { ...i, x: m.x, y: m.y } : i; }) });
+    persist(get);
+  },
+  /**
+   * 창 크기가 바뀌었다 — 화면 밖으로 나간 위젯을 안으로 접는다 (모니터 변경·해상도 변경).
+   *
+   * `load` 와 같은 이유로 **저장하지 않는다**: 잠깐 작아진 창에 맞춰 저장해 버리면 원래
+   * 배치로 돌아갈 길이 없어진다. 사용자가 다음에 무언가를 옮길 때 함께 적힌다.
+   */
+  clampAll(bounds) {
+    const cur = get().instances;
+    const next = clampToBounds(cur, bounds);
+    if (next.every((i, idx) => i === cur[idx])) return;
+    set({ instances: next });
+  },
+  setSelection(selection) { set({ selection }); },
+  toggleSelected(id) {
+    const cur = get().selection;
+    set({ selection: cur.includes(id) ? cur.filter((s) => s !== id) : [...cur, id] });
+  },
+  clearSelection() { if (get().selection.length) set({ selection: [] }); },
   updateWidgetSettings(instanceId, patch) {
     set({ instances: get().instances.map((i) => (i.id === instanceId ? { ...i, settings: { ...i.settings, ...patch } } : i)) });
     persist(get);

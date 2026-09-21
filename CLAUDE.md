@@ -10,15 +10,15 @@ Windows 바탕화면에 상주하는 개인 위젯 대시보드 (Tauri 2 + React
 | `sysmon` | `providers/sysmon` | sysinfo(CPU/RAM/네트워크) + nvidia-smi(GPU) + LibreHardwareMonitor(CPU 온도, 선택). CPU 상위 프로세스는 위젯이 켤 때만 수집(`sysmon_set_detail`) — 목록 갱신이 비싸다 |
 | `claude-usage` | `providers/claude_usage` | **구독 한도 %** (5시간 / 주간 전체모델): 위젯 내 OAuth 로그인(`auth.rs`, Claude Code 와 같은 PKCE 흐름·클라이언트 id, 코드 붙여넣기) → 토큰은 `%APPDATA%/com.user.deskboard/claude.json` → `api.anthropic.com/api/oauth/usage` 120초 폴링(429 시 5분 백오프) + 트랜스크립트 변경 시 즉시. Claude Code 의 credentials 파일은 건드리지 않음. 로컬 비용 추정(`*.jsonl` 파싱, `resources/pricing.json`)은 옵션 |
 | `calendar` | `providers/calendar` | SQLite (`%APPDATA%/com.user.deskboard/calendar.sqlite`) |
-| `spotify` | `providers/spotify` | PKCE 로그인, Web API 5초 폴링(위젯 표시 중에만) |
+| `spotify` | `providers/spotify` | PKCE 로그인, Web API 5초 폴링(위젯 표시 중에만). 위젯이 막 떴을 때·곡이 끝났을 때(`spotify_poll`)는 주기를 기다리지 않는다 — 진행 시간은 백엔드의 `fetched_at` 을 기준으로 **프론트의 `Progress` 안에서만** 1초마다 보간한다 |
 | `settings` | 없음 | 톱니바퀴 아이콘만 있는 정사각형(56×56). 클릭 = 편집 모드(잠금) 토글. 설정 패널 자체는 편집 모드의 편집 바 "⚙ 설정" 버튼이나 위젯 오버레이 ⚙ 로 연다 → `singleton` (항상 1개, 제거 불가, 로드 시 없으면 자동 추가·정사각형이 아니면 기본 크기로 보정) |
 | `wallpaper` | `providers/wallpaper` | 위젯 아님 — 배경화면을 읽어 블러한 스냅샷을 `wallpaper://update` 로 푸시 (카드 뒤 '진짜 반투명' 재료) |
 | `weather` | `providers/weather` | [Open-Meteo](https://open-meteo.com) — **키·가입 불필요**. 위젯이 떠 있을 때만 15분 폴링, 도시 검색은 `weather_search`(지오코딩, 역시 키 불필요) |
 | `notes` | `providers/notes` | 메모·할 일. SQLite (`notes.sqlite`). 목록은 **위젯 인스턴스마다 독립** — 여러 개 띄워 용도별로 나눠 쓴다 |
 | `playtime` | `providers/activity` | `playtime` 은 게임(분류 규칙)을 자동으로 세고, 그 밖의 프로그램은 설정의 `extra` 에 등록한 것만 더해 도넛으로 보여준다 — "게임만"과 "앱 전부"로 위젯을 나누면 같은 데이터를 두 번 보게 된다. 앞에 떠 있는 창의 실행 파일 이름만 5초마다 확인해 `activity.sqlite` 에 누적 — **창 제목은 저장하지 않는다.** 입력이 3분 없으면 자리비움으로 보고 세지 않고, 대시보드 자신도 세지 않는다. 분류는 `resources/activity-rules.json` + 사용자 규칙(`rules` 테이블이 우선) |
 | `gitstatus` | `providers/git` | 등록한 폴더 아래 2단계까지 `.git` 탐색 → 브랜치·미커밋 수·ahead/behind. `git2` crate (repo 마다 프로세스를 띄우지 않으려고). **fetch 하지 않는다** — ahead/behind 는 마지막으로 받아온 시점 기준 |
-| `github` | `providers/github` | 리뷰 요청 PR·미확인 알림·설정한 저장소의 최신 CI. PAT 는 **DPAPI 로 암호화**해 `github.dat` 에 (`providers/secrets`) |
-| `folder` | `providers/folders` | 디스코드식 바로가기 폴더. 인스턴스당 실제 디렉터리 1개(`%APPDATA%/com.user.deskboard/folders/<instanceId>` 기본) — 드롭 시 이동/복사, `IShellItemImageFactory` 로 아이콘 추출, `notify` 로 변경 감지 |
+| `github` | `providers/github` | 기여도 잔디(1년)·리뷰 요청·담당 이슈·미확인 알림, 그리고 등록한 저장소(8개)마다 열린 PR/이슈·내 차례인 것·그 저장소 알림·기본 브랜치 CI. **주기마다 호출은 두 번뿐** — GraphQL 하나(`parse::build_query`, 저장소는 `r0:` `r1:` 별칭으로 나란히)와 REST `/notifications` 하나(GraphQL 에 알림 API 가 없다). 저장소를 늘려도 호출 수는 그대로다. classic PAT 에 `repo`·`notifications`·**`read:user`**(잔디) 필요. PAT 는 **DPAPI 로 암호화**해 `github.dat` 에 (`providers/secrets`) |
+| `folder` | `providers/folders` | 디스코드식 바로가기 폴더. 인스턴스당 실제 디렉터리 1개. **`settings.source` 가 두 가지를 가른다** — `managed`(전용 폴더를 `%APPDATA%/com.user.deskboard/folders/<instanceId>` 에 만들어 쓴다. `dir` 은 쓰지 않고 저장도 하지 않는다)와 `link`(사용자가 고른 기존 폴더. **없으면 만들지 않고** 위젯이 이유를 보여준다). 드롭 시 이동/복사, `IShellItemImageFactory` 로 아이콘 추출, `notify` 로 변경 감지 |
 
 새 위젯: [docs/ADDING_A_WIDGET.md](docs/ADDING_A_WIDGET.md) — 폴더 하나 + `registry.ts` 한 줄 (+ Provider).
 
@@ -43,6 +43,27 @@ cd src-tauri && cargo test
 npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/nsis/
 ```
 
+## 배포·업데이트
+- **저장소에는 소스만 올린다.** `v*` 태그를 밀면 `.github/workflows/release.yml` 이
+  windows-latest 에서 검사(typecheck·vitest·cargo test) → `tauri build` → 서명 → 릴리스에
+  `*-setup.exe` · `.sig` · `latest.json` 을 붙인다. 절차는 [docs/RELEASE.md](docs/RELEASE.md).
+- 앱은 `tauri-plugin-updater` 로 `releases/latest/download/latest.json` 을 본다
+  (`tauri.conf.json` 의 `plugins.updater`). 확인은 **시작 8초 뒤 한 번**과 설정에서 누를 때뿐 —
+  주기적으로 긁지 않는다 (`core/updater.ts`, 설정 패널의 "업데이트" 섹션).
+- 업데이터 플러그인은 **release 빌드에서만** 건다 (`lib.rs`). 개발 실행의 버전은 설치본과
+  무관해서, 걸어 두면 `tauri dev` 가 매번 자기를 업데이트하겠다고 나선다. 프론트도
+  `UPDATER_ENABLED` 로 DEV 에서는 확인을 건너뛴다.
+- **설치 전에 실행 중인 앱을 끝낸다** (`src-tauri/nsis-hooks.nsh`, `nsis.installerHooks`).
+  덮어 설치는 옛 버전의 언인스톨러를 먼저 돌리는데, 그때 `deskboard.exe` 가 잠겨 있으면
+  "기존 버전을 제거할 수 없습니다" 로 멈춘다 — 자동 시작이 켜져 있으니 사실상 항상 그렇다.
+  창이 트레이에만 있어 "닫아 주세요" 안내로는 빠져나갈 수 없으므로 훅에서 `taskkill` 한다.
+  **실제로 구해 주는 것은 `NSIS_HOOK_PREUNINSTALL` 쪽이다** — 덮어 설치는 새 설치본이 옛
+  언인스톨러를 먼저 `ExecWait` 하고 그게 실패하면 멈추므로, 훅은 **이미 깔려 있던 버전**의
+  것이 돈다. 그래서 이 기능은 0.3.0 이 깔린 **다음** 설치부터 효과가 난다.
+- 서명 키는 `%USERPROFILE%\.tauri\deskboard.key` (저장소 밖). 공개 키만 `tauri.conf.json` 에
+  있고, CI 는 `TAURI_SIGNING_PRIVATE_KEY` 시크릿으로 서명한다. **개인 키를 잃으면 이미 깔린
+  앱들이 새 릴리스를 거부한다** — 사용자가 설치 파일로 한 번 덮어써야 복구된다.
+
 ## 시작/종료
 - 자동 시작: `autostart.rs::sync` 가 시작 시 `settings.json` 의 `v1.autostart`(기본 true) 에 맞춰 HKCU Run 값을 enable/disable (enable 은 현재 exe 경로로 덮어써 교정). **debug 빌드는 절대 등록하지 않고**, Run 값이 `\target\debug|release\` 를 가리키면 지운다. 설정 토글은 `settings.ts::setAutostart`.
 - 단일 인스턴스: `tauri-plugin-single-instance` — release 빌드에서만. 두 번째 실행은 기존 창 `show()` 후 종료.
@@ -53,7 +74,10 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
   모양은 `<html>` 의 세 속성이 결정한다 (`settings.ts::applyTheme`):
   `data-theme-mode`(translucent|solid) · `data-palette`(dark|light, 설정의 `auto` 는 OS 테마 추종) ·
   `data-card-style`(glass|minimal|borderless|none).
-  카드 불투명도·블러 강도·모서리 반경은 설정 슬라이더 → `--surface-alpha`/`--radius`.
+  카드 불투명도·블러 강도·모서리 반경·**테두리 진하기**는 설정 슬라이더 →
+  `--surface-alpha`/`--radius`/`--border-k`. `--border-k`(0~1)는 팔레트별 기준 알파에 섞여
+  `--border` 와 `--card-highlight` 를 함께 진하게 한다 — 기본 0.65 로, 배경화면 위에서
+  카드 경계가 묻히지 않는 값이다.
 - 창은 선택 모니터의 작업영역(`GetMonitorInfoW.rcWork`) 전체를 덮는다 (`window.rs::fit_to_work_area`, 2초마다 변화 감지). 위젯 좌표 = 작업영역 좌표.
 - **z-order 는 불변식 하나로 관리한다 — 바탕화면 바로 위, 나머지 앱 아래**
   (`window.rs::enforce_z_order`). Win+D 가 Progman 을 끌어올리면 다시 그 위로 돌아간다.
@@ -108,7 +132,18 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
     제외한다 — 거기로 돌려주면 IME 가 다시 갈 곳을 잃는다.
 - 히트 영역 click-through (`window.rs::start_hit_test`): 잠금 상태에서 커서가 위젯 사각형 밖이면 `set_ignore_cursor_events(true)` → 빈 영역 클릭이 바탕화면 아이콘으로 통과. 프론트가 `set_hit_regions` 로 사각형을 보낸다 (편집 모드·설정 패널 열림 = 비활성).
 - 팝업·메뉴 닫기는 `core/dismiss.ts::useDismiss` (창 안 바깥 클릭 + 히트 영역 밖 클릭 `hit://outside-press` + Esc). 창 `blur` 는 always-on-bottom 창에서 클릭 직후에도 발생하므로 쓰지 않는다. 위젯 밖으로 튀어나오는 팝업은 `setOverlayRect` 로 히트 영역 등록.
+- 편집 모드의 **다중 선택**: 빈 곳 드래그(마키) 또는 Ctrl/Shift 클릭으로 고르고, 하나를 끌면 전부 같은 만큼 움직인다
+  (`core/layout.ts` — 격자 맞춤은 끄는 위젯에만 적용하고 그 차이를 전부에 더한다. 각자를 따로 맞추면 간격이 무너진다.
+  경계 보정도 묶음 전체로 본다). 원위치는 드래그를 **시작할 때** 찍는다 — 매 프레임 현재 좌표에 더하면 반올림 오차가 쌓인다.
+  선택은 저장하지 않고 잠그면 비운다. Esc 는 선택 해제 → 잠금 순으로 한 단계씩.
 - 내용 자동 맞춤: zoom = `contentScale()`(기본 크기 대비 비율, autoScale 꺼지면 1) × 넘침 보정(`WidgetFrame` 이 body 의 scroll/client 비율을 재서 넘치면 축소). 내용이 잘리지 않음을 보장. 위젯은 배율을 뺀 `size` 를 받는다.
+  내용 여백(`--wpad`)도 카드 크기를 따라간다(짧은 변의 7%, 6~14px). **배율로 나눠서 넣는다** —
+  여백은 body 안에 있어 `zoom` 과 함께 커지므로, 안 그러면 크게 키운 위젯만 테두리가 뚱뚱해진다.
+- 크기 조절은 **네 변 + 네 모서리 여덟 방향**이다 (`core/layout::resizeBox`, `WidgetFrame` 의
+  `.widget-resize.r-*`). 끄는 변만 옮기고 반대쪽 변은 시작 자리에 고정한다 — 왼쪽/위를 끌면
+  `x`/`y` 가 함께 줄어든다. 격자 맞춤은 **끄는 변의 화면 좌표**에 건다(크기에 걸면 반대쪽 변이
+  격자에서 떨어진다). 손잡이 띠는 카드 **안쪽**으로 깐다 — 바깥으로 내밀면 히트 영역
+  (`set_hit_regions`, 위젯 사각형 그대로)을 벗어나 클릭이 통과한다.
 
 ## 규칙
 - 색상·타이포는 `core/theme.css` 의 CSS 변수만 쓴다. 하드코딩 금지.
@@ -136,14 +171,21 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
 - CPU 온도는 Windows 사용자 모드에서 직접 읽을 수 없다 → LibreHardwareMonitor 를 실행(웹서버 8085 켬)해야 표시된다.
 - Spotify 재생 제어는 Premium 계정만. 푸시 API 가 없어 5초 폴링.
 - 반투명은 기본적으로 카드 표면의 알파값(`--surface-alpha`)일 뿐이다.
-- **배경화면 블러는 실험적이고 기본 꺼짐**(`blurStrength: 0`). 켜면
-  `providers/wallpaper` 가 블러한 스냅샷을 만들고, 각 카드가 자기 위치만큼 밀어 깐다
-  (`WidgetFrame.css` 의 `.widget::before`). 얻는 방법이 둘이다:
-  - **캡처**(기본, 10초): 아이콘을 품은 `Progman`/`WorkerW` 를 `PrintWindow(PW_RENDERFULLCONTENT)`.
+- **배경화면 블러는 기본 켜짐**(`blurStrength: 3`). `providers/wallpaper` 가 블러한 스냅샷을
+  만들고, 각 카드가 자기 위치만큼 밀어 깐다 (`WidgetFrame.css` 의 `.widget::before`).
+  얻는 방법이 둘이다:
+  - **캡처**(기본): 아이콘을 품은 `Progman`/`WorkerW` 를 `PrintWindow(PW_RENDERFULLCONTENT)`.
     Wallpaper Engine 같은 라이브 배경화면은 **파일을 바꾸지 않고** 이 창에 직접 그리므로
     `SPI_GETDESKWALLPAPER` 로는 엉뚱한 옛 이미지가 나온다. 캡처하면 배치 계산도 필요 없다.
   - **파일**(폴백, 30초): 캡처가 비어 있으면(`looks_blank`) 배경화면 파일을 읽고
     `WallpaperStyle` 레지스트리에 맞춰 채우기/맞춤/늘이기/가운데/바둑판을 계산한다.
   `Wallpaper.source` 가 어느 쪽인지 알려주고 설정 패널이 표시한다.
-  꺼져 있으면 `wallpaper_set_active(false)` 로 캡처 루프까지 멈춘다 — 실측 상시 CPU
-  0.94%(끔) vs 6.35%(켬, 1코어 기준). 싸게 만드는 방법은 `providers/wallpaper/mod.rs` 머리말 참고.
+  처음 구현은 상시 CPU 를 0.94% → 6.35% 로 올려 기본이 꺼짐이었다. 기본으로 켤 수 있게 된 것은
+  셋을 고친 뒤다 (`providers/wallpaper/mod.rs` 머리말에 자세히):
+  **① GDI 안에서 자르고 줄여 받는다**(`capture_monitor` 의 `StretchBlt` — CPU 로 넘어오는
+  픽셀이 200만 → 6만), **② 지문이 같으면 블러도 인코딩도 emit 도 건너뛴다**,
+  **③ 주기를 결과에 맞춘다**(움직이면 2초, 3번 연속 그대로면 10초).
+  고친 뒤 실측(release, 1920x1080, 60초씩): **끔 1.46% vs 켬 1.95%** — 블러가 더하는 비용이
+  5.4%p 에서 0.5%p 로 줄어 기본값을 켜짐으로 돌렸다.
+  끄면 `wallpaper_set_active(false)` 로 캡처 루프까지 멈춘다.
+  **남은 비용은 `PrintWindow` 자체다** — 바탕화면을 다시 그리게 하는 일이라 피할 수 없다.

@@ -46,13 +46,23 @@
 :root[data-card-style="none"] .widget { text-shadow: 0 1px 3px var(--scrim); }
 
 .widget.editing { box-shadow: 0 0 0 2px var(--accent), var(--shadow-card); }
-/* 편집 모드 전용 오버레이 핸들 (제목 없음) */
+/*
+ * 편집 모드 전용 오버레이 (제목줄은 없다). 헤더는 손잡이 띠(6px) **안쪽**에서 시작한다.
+ *
+ * 설정·제거 버튼이 오른쪽 위 모서리에 앉는데, 헤더가 카드 끝까지 닿으면 그 자리를 두고
+ * 모서리 손잡이와 다툰다 — 헤더를 위로 올리면 위쪽 가장자리로 크기를 못 바꾸고,
+ * 손잡이를 위로 올리면 버튼을 못 누른다. 6px 씩 물러나면 둘 다 자기 자리를 갖는다:
+ * 바깥 6px 테두리는 온전히 손잡이, 그 안쪽은 온전히 헤더다.
+ */
 .widget-header {
-  position: absolute; inset: 0 0 auto 0; z-index: 2;
+  position: absolute; inset: 6px 6px auto 6px; z-index: 4;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 4px 8px; font-size: var(--fs-label); color: var(--text-dim); cursor: move;
+  padding: 3px 6px; font-size: var(--fs-label); color: var(--text-dim); cursor: move;
   background: linear-gradient(var(--surface-strong), transparent);
+  /* 헤더는 내용 위에 겹친다 — 평소엔 비켜 있다가 커서를 올리면 또렷해진다 */
+  opacity: .35; transition: opacity var(--dur-fast) var(--ease);
 }
+.widget:hover .widget-header, .widget.selected .widget-header { opacity: 1; }
 .widget-grip { letter-spacing: -1px; }
 .widget-actions { display: inline-flex; gap: 4px; }
 .widget-actions button {
@@ -60,10 +70,32 @@
   transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 .widget-actions button:hover { color: var(--text); background: var(--fill-hover); }
-.widget-body { flex: 1 1 auto; min-height: 0; padding: 12px; overflow: hidden; }
-.widget-resize {
-  position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; z-index: 3;
-  background: linear-gradient(135deg, transparent 50%, var(--accent) 50%);
-  border-bottom-right-radius: var(--radius);
-}
+/* 여백은 카드 크기를 따라간다 (WidgetFrame 이 --wpad 를 계산해 넣는다) */
+.widget-body { flex: 1 1 auto; min-height: 0; padding: var(--wpad, 12px); overflow: hidden; }
+
+/*
+ * 크기 조절 — 네 변 + 네 모서리.
+ *
+ * 띠를 카드 **안쪽으로** 깐다. 바깥으로 내밀면 히트 영역(`set_hit_regions`)이 위젯 사각형
+ * 그대로라 잠금 해제 상태에서도 카드 밖 몇 px 는 클릭이 통과해 잡히지 않는다.
+ * 모서리는 변보다 두껍고 DOM 에서 나중에 오므로 겹치는 자리에서 대각선이 이긴다.
+ */
+.widget-resize { position: absolute; z-index: 3; }
+.widget-resize.r-n { top: 0; left: 0; right: 0; height: 6px; cursor: ns-resize; }
+.widget-resize.r-s { bottom: 0; left: 0; right: 0; height: 6px; cursor: ns-resize; }
+.widget-resize.r-w { top: 0; bottom: 0; left: 0; width: 6px; cursor: ew-resize; }
+.widget-resize.r-e { top: 0; bottom: 0; right: 0; width: 6px; cursor: ew-resize; }
+.widget-resize.r-nw, .widget-resize.r-ne, .widget-resize.r-sw, .widget-resize.r-se { width: 16px; height: 16px; }
+.widget-resize.r-nw { top: 0; left: 0; cursor: nwse-resize; }
+.widget-resize.r-se { bottom: 0; right: 0; cursor: nwse-resize; }
+.widget-resize.r-ne { top: 0; right: 0; cursor: nesw-resize; }
+.widget-resize.r-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+/* 편집 중에는 어디를 잡으면 되는지 보이게 — 모서리에만 표식을 둔다 */
+.widget.editing .widget-resize.r-se { background: linear-gradient(135deg, transparent 55%, var(--accent) 55%); border-bottom-right-radius: var(--radius); }
+.widget.editing .widget-resize.r-nw { background: linear-gradient(315deg, transparent 55%, var(--accent) 55%); border-top-left-radius: var(--radius); }
+.widget.editing .widget-resize:hover { background: color-mix(in srgb, var(--accent) 45%, transparent); }
 .widget-scale { font-size: var(--fs-micro); color: var(--text-dim); align-self: center; margin-right: 4px; }
+
+/* 마키나 Ctrl/Shift 클릭으로 고른 위젯 — 편집 링보다 한 단계 더 또렷하게. */
+.widget.selected { box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px color-mix(in srgb, var(--accent) 30%, transparent), var(--shadow-card); }
+.widget-group { font-size: var(--fs-micro); color: var(--accent); margin-left: 6px; }

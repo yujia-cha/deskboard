@@ -22,6 +22,13 @@ pub fn run() {
         }
     }));
 
+    // 자동 업데이트 (GitHub 릴리스의 `latest.json` → 서명된 NSIS 설치본).
+    // **release 빌드에서만** 건다 — 개발 실행의 버전은 설치본과 무관해서, 걸어 두면
+    // `npm run tauri dev` 가 매번 자기 자신을 업데이트하겠다고 나선다.
+    // 프론트(`core/updater.ts`)도 DEV 에서는 확인 자체를 건너뛴다.
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
@@ -31,6 +38,8 @@ pub fn run() {
             None,
         ))
         .plugin(tauri_plugin_dialog::init())
+        // 업데이트를 설치한 뒤 앱을 다시 띄우는 데 쓴다 (`process:allow-restart`).
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             window::build_tray(app.handle())?;
             // Win+D(바탕화면 보기)로 대시보드가 같이 숨지 않게 한다.
@@ -65,6 +74,7 @@ pub fn run() {
             providers::spotify::spotify_playlists,
             providers::spotify::spotify_last_playback,
             providers::spotify::spotify_set_active,
+            providers::spotify::spotify_poll,
             providers::spotify::spotify_login,
             providers::spotify::spotify_cancel_login,
             providers::spotify::spotify_logout,

@@ -681,12 +681,21 @@ static BURST_UNTIL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64:
 /// 고쳐도 소용없던 횟수 — 다른 바탕화면 위젯 앱과 무한히 싸우지 않으려고 센다.
 #[cfg(target_os = "windows")]
 static INEFFECTIVE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+/// 바탕화면 창 자체를 못 찾았을 때 다시 훑어볼 시각. 그 전까지는 열거를 건너뛴다.
+#[cfg(target_os = "windows")]
+static NO_DESKTOP_UNTIL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// 바탕화면을 못 찾았을 때 쉬는 시간. 셸이 다시 뜨는 동안(explorer 재시작 등)을 덮는다.
+#[cfg(target_os = "windows")]
+const NO_DESKTOP_BACKOFF_MS: u64 = 2000;
 
 #[cfg(target_os = "windows")]
 fn now_ms() -> u64 {
-    use windows_sys::Win32::System::SystemInformation::GetTickCount;
+    // **64비트 쪽을 쓴다.** `GetTickCount` 는 49.7일에 한 바퀴 돌아 0 으로 떨어지는데,
+    // 이 앱은 재부팅 없이 몇 주씩 떠 있는 것이 정상이라 그때 버스트·포커스 반환 판정이
+    // 한 번 어긋난다 (미래 시각과 비교하게 된다).
+    use windows_sys::Win32::System::SystemInformation::GetTickCount64;
     // SAFETY: 인자 없는 조회.
-    unsafe { GetTickCount() as u64 }
+    unsafe { GetTickCount64() }
 }
 
 /// 셸이 무언가 했다 — 잠시 빠르게 지켜본다.
@@ -746,8 +755,20 @@ fn enforce_z_order(app: &AppHandle) {
         INEFFECTIVE.store(0, Ordering::Relaxed);
         return;
     }
+    // **바탕화면 창을 못 찾는 셸에서는 잠시 쉰다.** ExplorerPatcher 같은 대체 셸이나
+    // explorer 가 죽어 있는 동안에는 `first_window_below` 가 늘 "깨졌다" 고 답하는데,
+    // 그대로 두면 아래 `EnumWindows` 가 매 틱(50ms) 돈다. 어차피 바탕화면이 없으면
+    // `needs_fix` 가 거짓이라 할 일도 없다 — 확인 주기만 늦춘다.
+    if now_ms() < NO_DESKTOP_UNTIL.load(Ordering::Relaxed) {
+        return;
+    }
     // 깨졌을 때만 제대로 훑어 바탕화면 창을 찾는다.
     let z = scan_z(me);
+    if z.desktop == 0 {
+        NO_DESKTOP_UNTIL.store(now_ms() + NO_DESKTOP_BACKOFF_MS, Ordering::Relaxed);
+        return;
+    }
+    NO_DESKTOP_UNTIL.store(0, Ordering::Relaxed);
     if !needs_fix(&z) {
         return;
     }

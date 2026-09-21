@@ -12,7 +12,7 @@ use icon::IconCache;
 use notify_debouncer_mini::{new_debouncer, notify::RecommendedWatcher, notify::RecursiveMode, DebounceEventResult, Debouncer};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
@@ -45,16 +45,41 @@ fn dir_path(dir: &str) -> &Path {
     Path::new(dir)
 }
 
-#[tauri::command]
-pub fn folder_ensure_dir(app: AppHandle, instance_id: String, dir: Option<String>) -> Result<String, String> {
-    if let Some(d) = dir {
-        if !d.is_empty() {
-            std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
-            return Ok(d);
-        }
+/// 연결 모드에서 쓸 폴더. **없는 폴더를 만들지 않는다.**
+///
+/// 폴더 위젯은 절대 경로를 저장하므로 다른 PC 로 `settings.json` 을 옮기면
+/// `C:\Users\<다른 계정>\...` 같은 남의 경로가 따라온다. 그걸 `create_dir_all` 로 지으면
+/// 빈 껍데기가 생기고 사용자는 왜 비었는지 알 수 없다. "기존 폴더 연결" 은 말 그대로
+/// **이미 있는 것에 잇는 일**이므로, 없으면 이유를 돌려주고 위젯이 그대로 보여준다.
+fn link_dir(dir: Option<&str>, is_dir: &dyn Fn(&Path) -> bool) -> Result<PathBuf, String> {
+    let d = dir
+        .map(str::trim)
+        .filter(|d| !d.is_empty())
+        .ok_or_else(|| "연결할 폴더를 고르지 않았습니다".to_string())?;
+    let p = Path::new(d);
+    if is_dir(p) {
+        return Ok(p.to_path_buf());
     }
-    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let target = base.join("folders").join(&instance_id);
+    Err(format!("폴더를 찾을 수 없습니다: {d}"))
+}
+
+/// 위젯이 볼 디렉터리를 정한다.
+///
+/// `source` 가 두 가지 일을 가른다 — 섞으면 사용자가 자기 파일이 어디로 가는지 알 수 없다:
+/// - `"link"` : 사용자가 고른 **기존** 폴더. 있는지만 확인하고 그대로 쓴다.
+/// - 그 밖(`"managed"`, 옛 저장값의 `None`): 이 인스턴스만의 전용 폴더를 만들어 쓴다.
+#[tauri::command]
+pub fn folder_ensure_dir(
+    app: AppHandle,
+    instance_id: String,
+    source: Option<String>,
+    dir: Option<String>,
+) -> Result<String, String> {
+    if source.as_deref() == Some("link") {
+        let p = link_dir(dir.as_deref(), &|p: &Path| p.is_dir())?;
+        return Ok(p.to_string_lossy().to_string());
+    }
+    let target = super::data_dir(&app).join("folders").join(&instance_id);
     std::fs::create_dir_all(&target).map_err(|e| e.to_string())?;
     Ok(target.to_string_lossy().to_string())
 }
@@ -258,4 +283,42 @@ fn recycle_path(path: &Path) -> Result<(), String> {
 #[cfg(not(target_os = "windows"))]
 fn recycle_path(_path: &Path) -> Result<(), String> {
     Err("Windows 전용 기능입니다".into())
+}
+
+#[cfg(test)]
+mod dir_tests {
+    use super::*;
+
+    /// 이 경로들만 "있는 폴더"로 친다.
+    fn fake(existing: &'static [&'static str]) -> impl Fn(&Path) -> bool {
+        move |p: &Path| existing.iter().any(|e| Path::new(e) == p)
+    }
+
+    #[test]
+    fn an_existing_folder_is_linked_as_is() {
+        let f = fake(&[r"D:\shortcuts"]);
+        assert_eq!(link_dir(Some(r"D:\shortcuts"), &f), Ok(PathBuf::from(r"D:\shortcuts")));
+    }
+
+    #[test]
+    fn linking_never_creates_a_folder_even_under_an_existing_parent() {
+        // "연결" 은 이미 있는 것에 잇는 일이다 — 새로 만들고 싶으면 전용 폴더 모드를 쓴다.
+        let f = fake(&[r"D:\shortcuts"]);
+        assert!(link_dir(Some(r"D:\shortcuts\games"), &f).is_err());
+    }
+
+    #[test]
+    fn a_path_from_another_pc_reports_the_reason() {
+        let f = fake(&[r"D:\shortcuts"]);
+        let e = link_dir(Some(r"C:\Users\someone-else\Desktop\links"), &f).unwrap_err();
+        assert!(e.contains("someone-else"), "경로를 알려 줘야 고칠 수 있다: {e}");
+    }
+
+    #[test]
+    fn an_empty_link_setting_is_an_error_not_a_silent_default() {
+        let f = fake(&[]);
+        assert!(link_dir(None, &f).is_err());
+        assert!(link_dir(Some(""), &f).is_err());
+        assert!(link_dir(Some("   "), &f).is_err());
+    }
 }

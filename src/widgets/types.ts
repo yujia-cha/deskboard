@@ -1,11 +1,28 @@
 import type { ComponentType } from "react";
 
-export type SettingField =
-  | { key: string; label: string; type: "boolean"; default: boolean }
-  | { key: string; label: string; type: "number"; default: number; min?: number; max?: number; step?: number }
-  | { key: string; label: string; type: "text"; default: string; placeholder?: string }
-  | { key: string; label: string; type: "select"; default: string; options: { value: string; label: string }[] }
-  | { key: string; label: string; type: "path"; pick: "image" | "directory"; default: string };
+/**
+ * 모든 필드가 함께 갖는 것.
+ *
+ * `showIf` 는 **같은 위젯의 다른 설정값**을 보고 이 줄을 보일지 정한다. 서로 배타적인 모드를
+ * 하나의 폼에 섞어 두면(예: 폴더의 "새로 만들기" 와 "기존 폴더 연결") 어느 칸이 지금 의미가
+ * 있는지 알 수 없다 — 안 쓰는 칸은 감춘다.
+ */
+interface FieldBase {
+  key: string;
+  label: string;
+  showIf?: { key: string; equals: string | number | boolean };
+}
+
+export type SettingField = FieldBase &
+  (
+    | { type: "boolean"; default: boolean }
+    | { type: "number"; default: number; min?: number; max?: number; step?: number }
+    | { type: "text"; default: string; placeholder?: string }
+    | { type: "select"; default: string; options: { value: string; label: string }[] }
+    | { type: "path"; pick: "image" | "directory"; default: string }
+    /** 값이 없는 설명 줄 — `label` 이 곧 본문이다. 모드가 무엇을 하는지 적는 데 쓴다. */
+    | { type: "note" }
+  );
 
 export type WidgetSettings = Record<string, unknown>;
 
@@ -34,6 +51,12 @@ export interface WidgetDefinition<S extends WidgetSettings = WidgetSettings> {
 
 export function defaultsOf(schema?: SettingField[]): WidgetSettings {
   const out: WidgetSettings = {};
-  for (const f of schema ?? []) out[f.key] = f.default;
+  // 설명 줄(note)은 값이 아니다 — 저장값에 undefined 키를 만들지 않는다.
+  for (const f of schema ?? []) if (f.type !== "note") out[f.key] = f.default;
   return out;
+}
+
+/** `showIf` 를 현재 설정값으로 평가한다. 조건이 없으면 항상 보인다. */
+export function fieldVisible(f: SettingField, settings: WidgetSettings): boolean {
+  return !f.showIf || settings[f.showIf.key] === f.showIf.equals;
 }

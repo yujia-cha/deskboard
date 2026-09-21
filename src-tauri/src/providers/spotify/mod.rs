@@ -36,6 +36,8 @@ struct Inner {
     backoff_until: Option<Instant>,
     cancel_login: Arc<AtomicBool>,
     last_playback: Option<Playback>,
+    /// 다음 틱에 주기를 기다리지 말고 바로 읽어라 (위젯이 막 떠났거나 곡이 끝났을 때).
+    poll_now: bool,
 }
 
 pub struct SpotifyState {
@@ -51,7 +53,7 @@ impl Provider for SpotifyProvider {
     }
 
     fn start(&self, app: AppHandle) {
-        let path = auth::auth_path(&app.path().app_data_dir().expect("app data dir"));
+        let path = auth::auth_path(&super::data_dir(&app));
         let file = auth::load(&path);
         let status = Status {
             client_id: file.client_id.clone(),
@@ -61,7 +63,7 @@ impl Provider for SpotifyProvider {
         };
         let inner = Arc::new(Mutex::new(Inner {
             path, file, status, playlists: Vec::new(), active_widgets: 0, backoff_until: None,
-            cancel_login: Arc::new(AtomicBool::new(false)), last_playback: None,
+            cancel_login: Arc::new(AtomicBool::new(false)), last_playback: None, poll_now: false,
         }));
         let http = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().expect("reqwest");
         app.manage(SpotifyState { inner: inner.clone(), http: http.clone() });
@@ -160,24 +162,45 @@ async fn refresh_profile(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 재생 상태를 한 번 읽어 저장하고 알린다.
+///
+/// **저장을 빼먹으면 안 된다** — `spotify_last_playback` 이 이 값을 돌려주므로,
+/// 저장하지 않으면 위젯을 새로 띄울 때마다 한 주기 동안 옛 곡이 보인다.
+async fn poll_once(app: &AppHandle) {
+    let st = app.state::<SpotifyState>();
+    match with_api(app, |api| Box::pin(async move { api.playback().await })).await {
+        Ok(p) => {
+            if let Ok(mut i) = st.inner.lock() { i.last_playback = p.clone(); }
+            let _ = app.emit("spotify://playback", &p);
+        }
+        Err(e) => log::debug!("spotify poll: {e}"),
+    }
+}
+
+/// 5초 주기 폴링. 다만 **바로 읽어야 할 일**(위젯이 막 떠서 화면이 비어 있다, 곡이 끝났다)이
+/// 생기면 주기를 기다리지 않는다 — 그래서 틱은 짧게 돌고 주기는 경과 시간으로 따진다.
+/// Spotify 에는 푸시가 없어 이 창이 유일한 갱신 경로다.
 async fn poll_loop(app: AppHandle) {
+    const PERIOD: Duration = Duration::from_secs(5);
+    let mut last: Option<Instant> = None;
     loop {
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
         let st = app.state::<SpotifyState>();
-        let should_poll = match st.inner.lock() {
-            Ok(i) => i.active_widgets > 0 && i.file.token.is_some() && i.backoff_until.map_or(true, |t| Instant::now() >= t),
-            Err(_) => false,
+        let (should_poll, forced) = match st.inner.lock() {
+            Ok(mut i) => {
+                let forced = std::mem::replace(&mut i.poll_now, false);
+                let ok = i.active_widgets > 0
+                    && i.file.token.is_some()
+                    && i.backoff_until.map_or(true, |t| Instant::now() >= t);
+                (ok, forced)
+            }
+            Err(_) => (false, false),
         };
-        if !should_poll {
+        if !should_poll || (!forced && last.is_some_and(|t| t.elapsed() < PERIOD)) {
             continue;
         }
-        match with_api(&app, |api| Box::pin(async move { api.playback().await })).await {
-            Ok(p) => {
-                if let Ok(mut i) = st.inner.lock() { i.last_playback = p.clone(); }
-                let _ = app.emit("spotify://playback", &p);
-            }
-            Err(e) => log::debug!("spotify poll: {e}"),
-        }
+        last = Some(Instant::now());
+        poll_once(&app).await;
     }
 }
 
@@ -202,7 +225,15 @@ pub fn spotify_last_playback(state: State<'_, SpotifyState>) -> Option<Playback>
 pub fn spotify_set_active(state: State<'_, SpotifyState>, active: bool) {
     if let Ok(mut i) = state.inner.lock() {
         i.active_widgets = if active { i.active_widgets + 1 } else { i.active_widgets.saturating_sub(1) };
+        // 방금 뜬 위젯이 첫 곡 정보를 5초 동안 기다리지 않게 한다.
+        if active { i.poll_now = true; }
     }
+}
+
+/// 지금 바로 한 번 읽는다 — 곡이 끝났을 때 프론트가 부른다 (다음 곡이 늦게 뜨지 않도록).
+#[tauri::command]
+pub async fn spotify_poll(app: AppHandle) {
+    poll_once(&app).await;
 }
 
 /// 브라우저 로그인. 완료/실패는 `spotify://status` 로 알린다.
@@ -332,9 +363,7 @@ pub async fn spotify_control(app: AppHandle, action: String, arg: Option<String>
     }?;
     // 제어 직후 상태를 바로 갱신 (볼륨은 드래그 중 연속 호출이라 다음 폴링에 맡긴다)
     if !is_volume {
-        if let Ok(p) = with_api(&app, |api| Box::pin(async move { api.playback().await })).await {
-            let _ = app.emit("spotify://playback", &p);
-        }
+        poll_once(&app).await;
     }
     Ok(())
 }

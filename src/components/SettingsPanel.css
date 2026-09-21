@@ -26,7 +26,15 @@
 .settings .preset-row button { background: var(--fill); border: 1px solid var(--border); border-radius: 8px; padding: 3px 8px; font-size: var(--fs-meta); }
 .settings .preset-row button:hover { border-color: var(--accent); }
 .settings .pair { display: inline-flex; align-items: center; gap: 4px; }
+/* 값 옆에 붙는 작은 동작 버튼 (업데이트 확인, 전역 색 사용, 찾아보기 …) */
+.settings .pair button {
+  background: var(--fill); border: 1px solid var(--border); border-radius: 8px;
+  padding: 4px 10px; color: var(--text); white-space: nowrap;
+}
+.settings .pair button:hover { border-color: var(--accent); background: var(--fill-hover); }
 .settings .pair input[type=number] { min-width: 70px; width: 70px; }
 .settings header span { display: inline-flex; gap: 6px; }
 .settings input[type="range"] { flex: 1; min-width: 90px; accent-color: var(--accent); }
 .settings .slider-value { min-width: 42px; text-align: right; white-space: nowrap; }
+/* 설정 폼의 설명 줄 (SettingField "note") */
+.settings .field-note { margin: 0; font-size: var(--fs-meta); line-height: 1.45; white-space: pre-line; }

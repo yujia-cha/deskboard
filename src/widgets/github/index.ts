@@ -6,13 +6,14 @@ export const githubWidget: WidgetDefinition<GithubSettings> = {
   title: "GitHub",
   icon: "🐙",
   component: Github,
-  defaultSize: { w: 280, h: 160 },
-  minSize: { w: 170, h: 80 },
+  defaultSize: { w: 320, h: 260 },
+  minSize: { w: 190, h: 80 },
   settingsSchema: [
-    // owner/repo 형식만 인정한다 — 그 외는 무시된다.
-    { key: "repos", label: "CI 를 볼 저장소 (쉼표로 여러 개)", type: "text", default: "",
+    // owner/repo 형식만 인정한다 — 그 외는 무시된다. 8개까지만 본다(질의가 커진다).
+    { key: "repos", label: "지켜볼 저장소 (쉼표로 여러 개, 8개까지)", type: "text", default: "",
       placeholder: "owner/repo, owner/other" },
+    { key: "showContributions", label: "기여도 잔디", type: "boolean", default: true },
+    { key: "showRepos", label: "저장소별 현황", type: "boolean", default: true },
     { key: "showNotifications", label: "알림 개수", type: "boolean", default: true },
-    { key: "showChecks", label: "CI 상태", type: "boolean", default: true },
   ],
 };

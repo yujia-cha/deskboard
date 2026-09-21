@@ -140,11 +140,23 @@ export function pickTracked(rows: UsageRow[], extras: string[]): UsageRow[] {
   return [...picked].sort((a, b) => b.seconds - a.seconds);
 }
 
-/** 아직 등록하지 않은 프로그램들 (등록 후보로 보여준다). */
-export function pickCandidates(rows: UsageRow[], extras: string[], limit = 8): UsageRow[] {
+/**
+ * 검색어가 이 프로그램에 걸리는가.
+ *
+ * 실행 파일 이름(`code`)과 사람 이름(`VS Code`) **둘 다** 본다. 사용자는 목록에서 본 이름으로
+ * 찾는데 저장된 것은 실행 파일 이름이라, 한쪽만 보면 눈앞의 항목이 검색에 안 걸린다.
+ */
+export function matchProgram(exe: string, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return exe.toLowerCase().includes(q) || prettyExe(exe).toLowerCase().includes(q);
+}
+
+/** 아직 등록하지 않은 프로그램들 (등록 후보로 보여준다). 게임은 자동으로 세므로 뺀다. */
+export function pickCandidates(rows: UsageRow[], extras: string[], limit = 8, query = ""): UsageRow[] {
   const set = new Set(extras);
   return rows
-    .filter((r) => r.category !== "game" && !set.has(r.exe.toLowerCase()))
+    .filter((r) => r.category !== "game" && !set.has(r.exe.toLowerCase()) && matchProgram(r.exe, query))
     .slice(0, limit);
 }
 

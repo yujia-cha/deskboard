@@ -11,6 +11,12 @@ import "./Folder.css";
 export interface FolderSettings extends Record<string, unknown> {
   name: string;
   image: string;
+  /**
+   * 이 위젯이 보는 폴더가 어디서 왔는가.
+   * - `managed`: deskboard 가 인스턴스마다 만들어 주는 전용 폴더 (`dir` 은 쓰지 않는다)
+   * - `link`   : 사용자가 고른 기존 폴더 (`dir` 이 그 경로다)
+   */
+  source: "managed" | "link";
   dir: string;
   layout: "list" | "grid";
   columns: number;
@@ -27,31 +33,37 @@ export interface FolderEntry {
   icon: string | null;
 }
 
-/** 디스코드식 바로가기 폴더 — 실제 디렉터리에 연결된 위젯. */
-export function Folder({ instanceId, settings, size }: WidgetProps<FolderSettings>) {
-  const updateWidgetSettings = useSettings((s) => s.updateWidgetSettings);
+/**
+ * 디스코드식 바로가기 폴더 — 실제 디렉터리 하나에 연결된 위젯.
+ *
+ * 폴더를 정하는 길이 **둘**이고, 둘은 결과가 다르다 (`settings.source`):
+ * - `managed` — deskboard 가 이 인스턴스만의 빈 폴더를 만들어 준다. 드롭한 파일이 그리로 모인다.
+ * - `link`    — 사용자가 이미 쓰는 폴더를 그대로 본다. 여기서 지우면 원본이 지워진다.
+ *
+ * 그래서 `dir` 은 **연결 모드의 입력값일 뿐**이다. 전용 폴더의 경로는 설정에 적지 않는다 —
+ * 적어 두면 다른 PC 로 `settings.json` 을 옮겼을 때 남의 계정 경로가 따라온다.
+ */
+export function Folder({ instanceId, settings, size, editing }: WidgetProps<FolderSettings>) {
   const setOverlayRect = useSettings((s) => s.setOverlayRect);
+  const openSettings = useSettings((s) => s.openSettings);
   const accent = useSettings((s) => s.instances.find((i) => i.id === instanceId)?.accent);
-  const [dir, setDir] = useState(settings.dir);
+  const [dir, setDir] = useState("");
+  const [dirError, setDirError] = useState<string | null>(null);
   const [entries, setEntries] = useState<FolderEntry[]>([]);
   const [customImage, setCustomImage] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const iconRef = useRef<HTMLButtonElement>(null);
 
-  // 최초 표시 시 기본 디렉터리 생성(%APPDATA%/.../folders/<instanceId>) 후 설정에 저장
+  // 볼 폴더를 정한다. 전용 폴더는 없으면 만들고, 연결 폴더는 **만들지 않고 확인만** 한다 —
+  // 오타나 남의 PC 경로를 지어 버리면 빈 껍데기가 생기고 사용자는 왜 비었는지 알 수 없다.
   useEffect(() => {
     let cancelled = false;
-    invoke<string>("folder_ensure_dir", { instanceId, dir: settings.dir || null }).then((d) => {
-      if (cancelled) return;
-      setDir(d);
-      if (d !== settings.dir) updateWidgetSettings(instanceId, { dir: d });
-    }).catch(console.warn);
+    invoke<string>("folder_ensure_dir", { instanceId, source: settings.source, dir: settings.dir || null })
+      .then((d) => { if (!cancelled) { setDir(d); setDirError(null); } })
+      .catch((e) => { if (!cancelled) { setDir(""); setDirError(String(e)); } });
     return () => { cancelled = true; };
-    // 인스턴스당 한 번만 — 사용자가 설정에서 dir 을 바꾸면 아래 effect 가 별도로 반영한다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [instanceId]);
-  useEffect(() => { if (settings.dir && settings.dir !== dir) setDir(settings.dir); }, [settings.dir, dir]);
+  }, [instanceId, settings.source, settings.dir]);
 
   const refresh = useCallback(() => {
     if (!dir) return;
@@ -89,6 +101,17 @@ export function Folder({ instanceId, settings, size }: WidgetProps<FolderSetting
       setDragOver(false);
     },
   });
+
+  // 연결할 폴더를 아직 고르지 않았거나 그 폴더가 사라졌다 — 빈 아이콘 대신 이유를 보여준다.
+  if (settings.source === "link" && (!settings.dir || dirError)) {
+    return (
+      <button className="folder-unset" title={dirError ?? settings.dir} onClick={() => openSettings(instanceId)}>
+        <span className="folder-emoji">🔗</span>
+        <span>{!settings.dir ? "연결할 폴더 고르기" : "폴더를 찾을 수 없습니다"}</span>
+        {editing && <span className="dim">설정에서 바꾸기</span>}
+      </button>
+    );
+  }
 
   const preview = entries.slice(0, 4);
   const iconSize = Math.max(28, Math.min(size.w, size.h - (settings.showName ? 20 : 0)));

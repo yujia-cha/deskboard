@@ -1,0 +1,32 @@
+# 푸시·PR 마다 도는 검사. 설치 파일은 만들지 않는다 (그건 release.yml 이 태그에서 한다).
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["v*"] # 태그는 release.yml 이 같은 검사를 한 번 더 돌린다
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest # Windows 전용 코드(win32 API)가 있어 여기서 돌려야 뜻이 있다
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      # clippy 는 아직 경고가 남아 있다 — 새로 늘었는지 눈으로 보는 용도다 (실패시키지 않는다).
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
+        continue-on-error: true

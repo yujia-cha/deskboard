@@ -1,6 +1,6 @@
 [package]
 name = "deskboard"
-version = "0.1.0"
+version = "0.3.0"
 description = "Desktop widget dashboard for Windows"
 authors = ["user"]
 edition = "2021"
@@ -20,6 +20,10 @@ tauri-plugin-shell = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
+# 자동 업데이트 — GitHub 릴리스의 latest.json 을 보고 서명된 설치본을 받아 설치한다.
+tauri-plugin-updater = "2"
+# 업데이트 설치 후 재시작.
+tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "process"] }

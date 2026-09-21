@@ -328,11 +328,7 @@ impl Provider for ActivityProvider {
     }
 
     fn start(&self, app: AppHandle) {
-        let path = app
-            .path()
-            .app_data_dir()
-            .map(|d| d.join("activity.sqlite"))
-            .expect("app data dir");
+        let path = super::data_dir(&app).join("activity.sqlite");
         let store = match Store::open(&path) {
             Ok(s) => s,
             Err(e) => {

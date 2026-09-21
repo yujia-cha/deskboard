@@ -223,7 +223,7 @@ impl Provider for ClaudeUsageProvider {
     fn start(&self, app: AppHandle) {
         app.manage(UsageState(Mutex::new(UsageSummary::default())));
         let refresh = Arc::new(Notify::new());
-        let token_file = auth::token_path(&app.path().app_data_dir().expect("app data dir"));
+        let token_file = auth::token_path(&super::data_dir(&app));
         app.manage(LimitsState {
             latest: Mutex::new(limits::Limits::default()),
             refresh: refresh.clone(),
@@ -251,11 +251,7 @@ fn publish(app: &AppHandle, scanner: &Scanner, pricing: &Pricing, dir: &Path) {
 
 fn run(app: AppHandle, refresh: Arc<Notify>) {
     let dir = transcripts_dir();
-    let user_pricing = app
-        .path()
-        .app_data_dir()
-        .map(|d| d.join("pricing.json"))
-        .unwrap_or_default();
+    let user_pricing = super::data_dir(&app).join("pricing.json");
     let pricing = Pricing::load_with_override(&user_pricing);
     let mut scanner = Scanner::default();
 

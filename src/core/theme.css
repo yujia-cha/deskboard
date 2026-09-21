@@ -41,6 +41,11 @@
   /* --- 표면 불투명도 (settings.ts 가 덮어쓴다) --- */
   --surface-alpha: 0.62;
 
+  /* --- 테두리 진하기 0~1 (settings.ts 가 덮어쓴다) ---
+     카드 경계가 배경화면에 묻히지 않게 한다. 0 이면 거의 안 보이는 실선,
+     1 이면 편집 모드 링에 가까운 또렷한 선. 팔레트마다 기준 알파가 다르다. */
+  --border-k: 0.65;
+
   /* --- 블러된 배경화면 (App.tsx 가 채운다) ---
      창이 완전 투명이라 backdrop-filter 가 샘플링할 것이 없다. 대신 배경화면을 블러해서
      카드 뒤에 위치를 맞춰 깐다 (WidgetFrame.css 의 .widget::before).
@@ -58,8 +63,8 @@
 :root[data-palette="dark"] {
   color-scheme: dark;
   --text: rgba(255, 255, 255, 0.92);
-  --text-dim: rgba(255, 255, 255, 0.55);
-  --border: rgba(255, 255, 255, 0.10);
+  --text-dim: rgba(255, 255, 255, 0.64);
+  --border: rgba(255, 255, 255, calc(0.06 + 0.44 * var(--border-k)));
   --surface: rgba(24, 24, 30, var(--surface-alpha));
   --surface-strong: rgba(24, 24, 30, min(1, calc(var(--surface-alpha) + 0.26)));
   --menu-bg: #222;
@@ -87,8 +92,8 @@
 :root[data-palette="light"] {
   color-scheme: light;
   --text: rgba(17, 17, 22, 0.92);
-  --text-dim: rgba(17, 17, 22, 0.55);
-  --border: rgba(0, 0, 0, 0.12);
+  --text-dim: rgba(17, 17, 22, 0.62);
+  --border: rgba(0, 0, 0, calc(0.07 + 0.43 * var(--border-k)));
   --surface: rgba(250, 250, 252, var(--surface-alpha));
   --surface-strong: rgba(250, 250, 252, min(1, calc(var(--surface-alpha) + 0.26)));
   --menu-bg: #f5f5f7;
@@ -124,10 +129,10 @@
   --card-border: 1px solid var(--border);
   --card-shadow: var(--shadow-card);
   /* 상단 1px 하이라이트 — 반투명 표면에서 카드 경계가 살아난다 */
-  --card-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --card-highlight: inset 0 1px 0 rgba(255, 255, 255, calc(0.06 + 0.22 * var(--border-k)));
 }
 :root[data-palette="light"][data-card-style="glass"] {
-  --card-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.60);
+  --card-highlight: inset 0 1px 0 rgba(255, 255, 255, calc(0.30 + 0.50 * var(--border-k)));
 }
 :root[data-card-style="minimal"] {
   --card-bg: var(--surface);

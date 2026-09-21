@@ -47,7 +47,7 @@ function apply(wp: WallpaperSnapshot) {
  * 블러된 배경화면을 CSS 변수로 올린다 (`--wallpaper`, `--wallpaper-w/h`, `--wallpaper-ox/oy`).
  * 각 카드는 자기 위치(`--wx/--wy`)만큼 배경을 밀어 자기 뒤 부분을 보여준다.
  *
- * `blurStrength` 가 0(기본값)이면 아무것도 하지 않고 **백엔드도 재운다** —
+ * `blurStrength` 가 0 이면 아무것도 하지 않고 **백엔드도 재운다** —
  * 켜져 있지 않은데 화면을 계속 캡처하면 그냥 낭비다.
  * `monitor` 가 바뀌면 크기·오프셋을 다시 구한다.
  */
@@ -64,7 +64,8 @@ export function useWallpaper(blurStrength: number, monitor: string | null) {
     invoke<WallpaperSnapshot>("get_wallpaper", { passes: blurStrength })
       .then((wp) => { if (!cancelled) apply(wp); })
       .catch(console.warn);
-    // 배경화면이 바뀌면 백엔드가 30초 안에 새 스냅샷을 보낸다.
+    // 배경화면이 바뀌면 백엔드가 새 스냅샷을 보낸다 (캡처 2~10초, 파일 30초).
+    // 바뀌지 않은 동안에는 아무것도 오지 않는다 — 백엔드가 지문으로 거른다.
     listen<WallpaperSnapshot>("wallpaper://update", (e) => apply(e.payload))
       .then((f) => { if (cancelled) f(); else un = f; })
       .catch(console.warn);

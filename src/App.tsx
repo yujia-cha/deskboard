@@ -18,6 +18,8 @@ export default function App() {
   const blurStrength = useSettings((s) => s.blurStrength);
   const canvasMonitor = useSettings((s) => s.canvasMonitor);
   const setLocked = useSettings((s) => s.setLocked);
+  const selection = useSettings((s) => s.selection);
+  const clearSelection = useSettings((s) => s.clearSelection);
   const toggleTheme = useSettings((s) => s.toggleTheme);
   const openSettings = useSettings((s) => s.openSettings);
 
@@ -50,11 +52,30 @@ export default function App() {
   useEvent("ui://toggle_theme", toggleTheme);
   useEvent("ui://settings", useCallback(() => openSettings(null), [openSettings]));
 
+  // Esc 는 한 단계씩 되돌린다 — 선택을 푸는 것과 편집을 끝내는 것은 다른 일이다.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setLocked(true); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (useSettings.getState().selection.length) clearSelection();
+      else setLocked(true);
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setLocked]);
+  }, [setLocked, clearSelection]);
+
+  // 창이 다른 크기의 작업영역으로 옮겨가면(모니터 변경·해상도 변경·작업표시줄 이동)
+  // 화면 밖에 남는 위젯이 생긴다. 잡을 수 없는 위젯이 되기 전에 안으로 접는다.
+  useEffect(() => {
+    if (!loaded) return;
+    let t = 0;
+    const onResize = () => {
+      window.clearTimeout(t);
+      // 크기 변경은 연속으로 오고, 끝난 뒤의 값만 뜻이 있다.
+      t = window.setTimeout(() => useSettings.getState().clampAll({ w: window.innerWidth, h: window.innerHeight }), 300);
+    };
+    window.addEventListener("resize", onResize);
+    return () => { window.clearTimeout(t); window.removeEventListener("resize", onResize); };
+  }, [loaded]);
 
   // 히트 영역: 잠금 상태에서 위젯 밖 클릭은 바탕화면(아이콘)으로 통과시킨다.
   useEffect(() => {
@@ -72,7 +93,9 @@ export default function App() {
       <Canvas />
       {!locked && (
         <div className="edit-bar">
-          편집 모드 — 헤더 드래그: 이동 · 모서리: 크기 · Esc: 잠금
+          {selection.length > 1
+            ? `${selection.length}개 선택 — 하나를 끌면 함께 움직입니다 · Esc: 선택 해제`
+            : "편집 모드 — 헤더 드래그: 이동 · 빈 곳 드래그: 여러 개 선택 · Ctrl/Shift 클릭: 추가 · 테두리·모서리 드래그: 크기"}
           <button onClick={() => openSettings(null)}>⚙ 설정</button>
           <button onClick={() => setLocked(true)}>🔒 잠금</button>
         </div>

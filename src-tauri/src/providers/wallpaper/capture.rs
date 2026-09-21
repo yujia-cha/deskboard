@@ -7,32 +7,60 @@
 //! 실측 결과 이 PC 에서는 `Progman`(SHELLDLL_DefView 를 자식으로 가진 창)을
 //! `PrintWindow(.., PW_RENDERFULLCONTENT)` 하면 라이브 배경화면이 그대로 잡힌다.
 //! 바탕화면 아이콘도 같이 잡히는데, 어차피 블러해서 깔기 때문에 오히려 실제 화면에 가깝다.
+//!
+//! **캡처는 GDI 안에서 줄여서 받는다.** 예전에는 전체 해상도(1920x1080 = 200만 픽셀)를
+//! `GetDIBits` 로 통째로 가져와 Rust 에서 자르고 줄였다. 8MB 복사 + 200만 번의 BGRA→RGB
+//! 루프 + 축소가 매 주기마다 돌았고, 그것이 상시 CPU 의 대부분이었다.
+//! 지금은 `StretchBlt` 한 번으로 **자르기와 축소를 GDI 에게 맡기고**, 가져오는 것은
+//! 320px 짜리 작은 비트맵 하나뿐이다 — 옮기는 픽셀이 30분의 1 아래로 줄었다.
 
 use image::RgbImage;
 
-/// 캡처본에서 모니터 하나에 해당하는 부분만 잘라낸다.
+/// 캡처 한 번의 계획 — 창 안에서 어디를 잘라 어느 크기로 받을지.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CapturePlan {
+    /// 창 좌상단 기준 잘라낼 영역 (이 모니터).
+    pub src_x: i32,
+    pub src_y: i32,
+    pub src_w: i32,
+    pub src_h: i32,
+    /// 받아 올 크기 — 가로세로 비율을 지킨 채 `max_edge` 아래로 줄인 값.
+    pub dst_w: u32,
+    pub dst_h: u32,
+}
+
+/// 캡처 계획을 세운다. 순수 계산이라 여기서 테스트한다.
 ///
-/// 바탕화면 창은 가상 데스크톱 전체를 덮으므로, 다중 모니터에서는 캡처 원점이 주 모니터
-/// 좌상단이 아닐 수 있다. `origin` 은 캡처본이 가상 화면 좌표 어디에서 시작하는지다.
-pub fn crop_monitor(
-    img: &RgbImage,
+/// `origin` 은 바탕화면 창이 가상 화면 좌표 어디에서 시작하는지, `win` 은 그 창의 크기,
+/// `monitor` 는 우리가 덮는 모니터의 가상 화면 사각형이다.
+///
+/// 모니터가 캡처본 밖이면 `None` — 잘못된 자리를 긁어 오는 대신 파일 방식으로 넘어간다.
+pub fn capture_plan(
     origin: (i32, i32),
-    bounds: (i32, i32, u32, u32),
-) -> Option<RgbImage> {
-    let (bx, by, bw, bh) = bounds;
-    if bw == 0 || bh == 0 {
+    win: (i32, i32),
+    monitor: (i32, i32, u32, u32),
+    max_edge: u32,
+) -> Option<CapturePlan> {
+    let (bx, by, bw, bh) = monitor;
+    if bw == 0 || bh == 0 || win.0 <= 0 || win.1 <= 0 {
         return None;
     }
-    let x = bx - origin.0;
-    let y = by - origin.1;
-    if x < 0 || y < 0 {
+    let (src_x, src_y) = (bx - origin.0, by - origin.1);
+    let (src_w, src_h) = (bw as i32, bh as i32);
+    if src_x < 0 || src_y < 0 || src_x + src_w > win.0 || src_y + src_h > win.1 {
         return None;
     }
-    let (x, y) = (x as u32, y as u32);
-    if x + bw > img.width() || y + bh > img.height() {
-        return None;
-    }
-    Some(image::imageops::crop_imm(img, x, y, bw, bh).to_image())
+    // 긴 변을 max_edge 로 맞춘다. 이미 그보다 작으면 그대로 받는다 (늘리지 않는다).
+    let longest = src_w.max(src_h) as u32;
+    let k = if longest > max_edge { max_edge as f64 / longest as f64 } else { 1.0 };
+    Some(CapturePlan {
+        src_x,
+        src_y,
+        src_w,
+        src_h,
+        dst_w: ((src_w as f64 * k).round() as u32).max(1),
+        dst_h: ((src_h as f64 * k).round() as u32).max(1),
+    })
 }
 
 /// 캡처가 사실상 비었는지 (거의 단색). PrintWindow 가 실패하면 새까만 이미지가 나오는데,
@@ -65,7 +93,8 @@ mod win {
     use windows_sys::Win32::Foundation::{HWND, LPARAM, RECT};
     use windows_sys::Win32::Graphics::Gdi::{
         CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits,
-        ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+        ReleaseDC, SelectObject, SetBrushOrgEx, SetStretchBltMode, StretchBlt, BITMAPINFO,
+        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HALFTONE, SRCCOPY,
     };
     // PrintWindow 만 Storage::Xps 아래에 있다 (Windows API 의 역사적인 분류).
     use windows_sys::Win32::Storage::Xps::PrintWindow;
@@ -117,17 +146,24 @@ mod win {
         (!hunt.found.is_null()).then_some(hunt.found)
     }
 
-    /// 창 전체를 RGB 이미지로. 실패하면 None.
-    pub fn capture(h: HWND) -> Option<(RgbImage, (i32, i32))> {
+    /// 바탕화면 창에서 **이 모니터 부분만 작게** 받아 온다.
+    ///
+    /// `PrintWindow` 는 창 크기 그대로 그리므로 전체 해상도 비트맵은 피할 수 없다. 대신 그것을
+    /// CPU 로 가져오지 않고, GDI 안에서 `StretchBlt` 한 번으로 잘라 줄인 뒤 **작은 쪽만**
+    /// `GetDIBits` 로 읽는다. 옮기는 픽셀이 30분의 1 아래로 줄어 여기가 제일 큰 절약이다.
+    ///
+    /// `HALFTONE` 을 쓰는 이유: 기본 모드(`COLORONCOLOR`)는 픽셀을 버리기만 해서, 1픽셀만
+    /// 움직인 라이브 배경화면이 전혀 다른 표본을 뽑아 카드 뒤가 지글거린다. 평균을 내면
+    /// 그 떨림이 사라진다 — 어차피 블러할 그림이라 비용 대비 이득이 크다.
+    pub fn capture_monitor(monitor: (i32, i32, u32, u32), max_edge: u32) -> Option<RgbImage> {
+        let h = desktop_window()?;
         let mut r = RECT { left: 0, top: 0, right: 0, bottom: 0 };
         // SAFETY: r 은 유효한 RECT 다.
         if unsafe { GetWindowRect(h, &mut r) } == 0 {
             return None;
         }
         let (w, hgt) = (r.right - r.left, r.bottom - r.top);
-        if w <= 0 || hgt <= 0 {
-            return None;
-        }
+        let plan = super::capture_plan((r.left, r.top), (w, hgt), monitor, max_edge)?;
 
         // SAFETY: 아래 GDI 호출들은 모두 성공 여부를 확인하고, 만든 자원은 반드시 해제한다.
         unsafe {
@@ -135,24 +171,42 @@ mod win {
             if screen.is_null() {
                 return None;
             }
-            let mem = CreateCompatibleDC(screen);
-            let bmp = CreateCompatibleBitmap(screen, w, hgt);
+            let full = CreateCompatibleDC(screen);
+            let full_bmp = CreateCompatibleBitmap(screen, w, hgt);
+            let small = CreateCompatibleDC(screen);
+            let small_bmp = CreateCompatibleBitmap(screen, plan.dst_w as i32, plan.dst_h as i32);
             let mut out = None;
-            if !mem.is_null() && !bmp.is_null() {
-                let old = SelectObject(mem, bmp as _);
-                if PrintWindow(h, mem, PW_RENDERFULLCONTENT) != 0 {
-                    out = read_pixels(mem, bmp as _, w, hgt);
+            if !full.is_null() && !full_bmp.is_null() && !small.is_null() && !small_bmp.is_null() {
+                let old_full = SelectObject(full, full_bmp as _);
+                let old_small = SelectObject(small, small_bmp as _);
+                if PrintWindow(h, full, PW_RENDERFULLCONTENT) != 0 {
+                    SetStretchBltMode(small, HALFTONE);
+                    // HALFTONE 은 브러시 원점을 다시 잡아 줘야 한다 (MSDN 의 요구사항).
+                    SetBrushOrgEx(small, 0, 0, std::ptr::null_mut());
+                    let ok = StretchBlt(
+                        small, 0, 0, plan.dst_w as i32, plan.dst_h as i32,
+                        full, plan.src_x, plan.src_y, plan.src_w, plan.src_h,
+                        SRCCOPY,
+                    );
+                    if ok != 0 {
+                        out = read_pixels(small, small_bmp as _, plan.dst_w as i32, plan.dst_h as i32);
+                    }
                 }
-                SelectObject(mem, old);
+                SelectObject(small, old_small);
+                SelectObject(full, old_full);
             }
-            if !bmp.is_null() {
-                DeleteObject(bmp as _);
+            for bmp in [small_bmp, full_bmp] {
+                if !bmp.is_null() {
+                    DeleteObject(bmp as _);
+                }
             }
-            if !mem.is_null() {
-                DeleteDC(mem);
+            for dc in [small, full] {
+                if !dc.is_null() {
+                    DeleteDC(dc);
+                }
             }
             ReleaseDC(std::ptr::null_mut(), screen);
-            out.map(|img| (img, (r.left, r.top)))
+            out
         }
     }
 
@@ -197,18 +251,17 @@ mod win {
 }
 
 #[cfg(target_os = "windows")]
-pub use win::{capture, desktop_window};
+pub use win::capture_monitor;
 
-/// 바탕화면 레이어를 캡처해 RGB 이미지와 그 가상 화면 좌표 원점을 돌려준다.
+/// 이 모니터의 바탕화면을 **이미 잘라 줄인** 상태로 캡처한다. 빈 화면이면 None (파일 방식으로).
 #[cfg(target_os = "windows")]
-pub fn capture_desktop() -> Option<(RgbImage, (i32, i32))> {
-    let h = desktop_window()?;
-    let (img, origin) = capture(h)?;
-    (!looks_blank(&img)).then_some((img, origin))
+pub fn capture_desktop(monitor: (i32, i32, u32, u32), max_edge: u32) -> Option<RgbImage> {
+    let img = capture_monitor(monitor, max_edge)?;
+    (!looks_blank(&img)).then_some(img)
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn capture_desktop() -> Option<(RgbImage, (i32, i32))> {
+pub fn capture_desktop(_monitor: (i32, i32, u32, u32), _max_edge: u32) -> Option<RgbImage> {
     None
 }
 
@@ -241,32 +294,44 @@ mod tests {
         assert!(looks_blank(&RgbImage::new(0, 0)));
     }
 
+    /// 1920x1080 모니터 두 대, 가상 화면은 (-1920, 0) 에서 시작한다.
+    const TWO_MONITORS: ((i32, i32), (i32, i32)) = ((-1920, 0), (3840, 1080));
+
     #[test]
-    fn cropping_picks_the_right_region_for_a_secondary_monitor() {
-        // 가상 화면이 (-1920, 0) 에서 시작하고, 잘라낼 모니터는 (0,0) 부터 1920x1080
-        let img = gradient(3840, 1080);
-        let got = crop_monitor(&img, (-1920, 0), (0, 0, 1920, 1080)).unwrap();
-        assert_eq!((got.width(), got.height()), (1920, 1080));
-        // 잘린 영역의 좌상단은 원본의 x=1920 지점이어야 한다
-        assert_eq!(got.get_pixel(0, 0), img.get_pixel(1920, 0));
+    fn the_plan_points_at_the_right_region_for_a_secondary_monitor() {
+        let (origin, win) = TWO_MONITORS;
+        let p = capture_plan(origin, win, (0, 0, 1920, 1080), 320).unwrap();
+        // 창 안에서 x=1920 부터가 이 모니터다
+        assert_eq!((p.src_x, p.src_y, p.src_w, p.src_h), (1920, 0, 1920, 1080));
     }
 
     #[test]
-    fn cropping_the_whole_capture_is_a_no_op() {
-        let img = gradient(1920, 1080);
-        let got = crop_monitor(&img, (0, 0), (0, 0, 1920, 1080)).unwrap();
-        assert_eq!(got.dimensions(), img.dimensions());
-        assert_eq!(got.get_pixel(5, 5), img.get_pixel(5, 5));
+    fn the_plan_shrinks_to_max_edge_keeping_the_aspect_ratio() {
+        let p = capture_plan((0, 0), (1920, 1080), (0, 0, 1920, 1080), 320).unwrap();
+        assert_eq!((p.dst_w, p.dst_h), (320, 180));
     }
 
     #[test]
-    fn cropping_outside_the_capture_fails_instead_of_panicking() {
-        let img = gradient(1920, 1080);
+    fn a_capture_smaller_than_max_edge_is_not_enlarged() {
+        let p = capture_plan((0, 0), (200, 100), (0, 0, 200, 100), 320).unwrap();
+        assert_eq!((p.dst_w, p.dst_h), (200, 100));
+    }
+
+    #[test]
+    fn a_monitor_outside_the_capture_has_no_plan() {
         // 캡처본에 없는 모니터
-        assert!(crop_monitor(&img, (0, 0), (1920, 0, 1920, 1080)).is_none());
+        assert!(capture_plan((0, 0), (1920, 1080), (1920, 0, 1920, 1080), 320).is_none());
         // 원점보다 왼쪽
-        assert!(crop_monitor(&img, (0, 0), (-100, 0, 800, 600)).is_none());
+        assert!(capture_plan((0, 0), (1920, 1080), (-100, 0, 800, 600), 320).is_none());
         // 크기가 0
-        assert!(crop_monitor(&img, (0, 0), (0, 0, 0, 1080)).is_none());
+        assert!(capture_plan((0, 0), (1920, 1080), (0, 0, 0, 1080), 320).is_none());
+        // 창 크기를 못 읽었다
+        assert!(capture_plan((0, 0), (0, 0), (0, 0, 1920, 1080), 320).is_none());
+    }
+
+    #[test]
+    fn the_plan_never_asks_for_a_zero_sized_bitmap() {
+        let p = capture_plan((0, 0), (4000, 4000), (0, 0, 4000, 1), 320).unwrap();
+        assert!(p.dst_w >= 1 && p.dst_h >= 1);
     }
 }

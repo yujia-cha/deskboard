@@ -17,11 +17,7 @@ impl Provider for CalendarProvider {
     }
 
     fn start(&self, app: AppHandle) {
-        let path = app
-            .path()
-            .app_data_dir()
-            .map(|d| d.join("calendar.sqlite"))
-            .expect("app data dir");
+        let path = super::data_dir(&app).join("calendar.sqlite");
         let store: Box<dyn CalendarSource> = match SqliteStore::open(&path) {
             Ok(s) => Box::new(s),
             Err(e) => {

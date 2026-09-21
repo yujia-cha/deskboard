@@ -2,10 +2,10 @@ import { useState } from "react";
 import { Donut } from "../../components/Donut";
 import { useSettings } from "../../core/settings";
 import {
-  addExtra, daysAgo, duration, durationShort, hhmm, localDay, parseExtras,
-  pickCandidates, pickTracked, prettyExe, removeExtra, share, sliceColor,
-  useSessions, useUsage,
+  daysAgo, duration, durationShort, hhmm, localDay, parseExtras,
+  pickTracked, prettyExe, share, sliceColor, useSessions, useUsage,
 } from "../../core/activity";
+import { ProgramPicker } from "./ProgramPicker";
 import type { WidgetProps } from "../types";
 import "./Playtime.css";
 
@@ -53,43 +53,14 @@ export function Playtime({ instanceId, settings, size, editing }: WidgetProps<Pl
     s.category === "game" || extras.includes(s.exe.toLowerCase()));
   const showSessions = settings.showSessions && size.h >= 210 && trackedSessions.length > 0;
 
-  // --- 등록 화면 (편집 모드에서만) ---
+  // --- 등록 화면 ---
   if (picking) {
-    const candidates = pickCandidates(data.rows, extras, 8);
     return (
-      <div className="pt-pick">
-        <div className="pt-pick-head">
-          <span>셀 프로그램 고르기</span>
-          <button className="link" onClick={() => setPicking(false)}>닫기</button>
-        </div>
-        {extras.length > 0 && (
-          <div className="pt-pick-group">
-            <span className="dim">등록됨 — 눌러서 빼기</span>
-            <div className="pt-chips">
-              {extras.map((e) => (
-                <button key={e} className="pt-chip on"
-                  onClick={() => update(instanceId, { extra: removeExtra(String(settings.extra ?? ""), e) })}>
-                  {prettyExe(e)} ✕
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        <div className="pt-pick-group">
-          <span className="dim">
-            {candidates.length > 0 ? "최근 쓴 프로그램 — 눌러서 추가" : "아직 기록된 프로그램이 없습니다"}
-          </span>
-          <div className="pt-chips">
-            {candidates.map((c) => (
-              <button key={c.exe} className="pt-chip"
-                onClick={() => update(instanceId, { extra: addExtra(String(settings.extra ?? ""), c.exe) })}>
-                {prettyExe(c.exe)} <span className="dim">{durationShort(c.seconds)}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-        <span className="dim pt-pick-note">게임은 등록하지 않아도 자동으로 셉니다.</span>
-      </div>
+      <ProgramPicker
+        value={String(settings.extra ?? "")}
+        onChange={(extra) => update(instanceId, { extra })}
+        onClose={() => setPicking(false)}
+      />
     );
   }
 
@@ -98,7 +69,7 @@ export function Playtime({ instanceId, settings, size, editing }: WidgetProps<Pl
       <div className="pt-empty dim">
         <div>아직 기록이 없습니다.</div>
         <div>게임은 자동으로 세고, 그 밖의 프로그램은 등록하면 함께 셉니다.</div>
-        {editing && <button className="link" onClick={() => setPicking(true)}>＋ 프로그램 등록</button>}
+        <button className="link" onClick={() => setPicking(true)}>＋ 프로그램 찾아서 등록</button>
       </div>
     );
   }
@@ -142,11 +113,10 @@ export function Playtime({ instanceId, settings, size, editing }: WidgetProps<Pl
         </div>
       )}
 
-      {editing && (
-        <button className="pt-edit link" onClick={() => setPicking(true)}>
-          ＋ 셀 프로그램 고르기
-        </button>
-      )}
+      {/* 프로그램을 더하는 길은 편집 모드에 가두지 않는다 — 평소에는 비켜 있다가 커서를 올리면 보인다. */}
+      <button className={`pt-edit link ${editing ? "always" : ""}`} onClick={() => setPicking(true)}>
+        ＋ 셀 프로그램 고르기
+      </button>
     </div>
   );
 }

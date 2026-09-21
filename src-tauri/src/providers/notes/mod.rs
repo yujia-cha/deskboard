@@ -17,11 +17,7 @@ impl Provider for NotesProvider {
     }
 
     fn start(&self, app: AppHandle) {
-        let path = app
-            .path()
-            .app_data_dir()
-            .map(|d| d.join("notes.sqlite"))
-            .expect("app data dir");
+        let path = super::data_dir(&app).join("notes.sqlite");
         let store: Box<dyn NotesSource> = match SqliteStore::open(&path) {
             Ok(s) => Box::new(s),
             Err(e) => {

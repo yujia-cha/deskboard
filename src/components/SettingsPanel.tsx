@@ -3,7 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { contentScale, useSettings, type CardStyle, type Palette, type ThemeMode } from "../core/settings";
 import { WIDGETS, widgetById } from "../widgets/registry";
-import type { SettingField } from "../widgets/types";
+import { fieldVisible, type SettingField } from "../widgets/types";
+import { UPDATER_ENABLED, useUpdater } from "../core/updater";
 import "./SettingsPanel.css";
 
 /** 입력 중에는 건드리지 않고 blur/Enter 때만 적용하는 숫자 입력 */
@@ -40,6 +41,7 @@ export function SettingsPanel() {
   const def = inst ? widgetById(inst.widgetId) : undefined;
   const [monitors, setMonitors] = useState<{ name: string; primary: boolean; work: { w: number; h: number } }[]>([]);
   const [autoStatus, setAutoStatus] = useState<{ enabled: boolean; path: string | null; dev: boolean } | null>(null);
+  const updater = useUpdater();
   const refreshAutoStatus = () => invoke<typeof autoStatus>("autostart_status").then(setAutoStatus).catch(() => setAutoStatus(null));
   useEffect(() => {
     invoke<typeof monitors>("list_monitors").then(setMonitors).catch(() => setMonitors([]));
@@ -101,7 +103,7 @@ export function SettingsPanel() {
             <section>
               <h4>옵션</h4>
               {(def.settingsSchema ?? []).length === 0 && <p className="dim">이 위젯은 옵션이 없습니다.</p>}
-              {def.settingsSchema?.map((f) => (
+              {def.settingsSchema?.filter((f) => fieldVisible(f, inst.settings)).map((f) => (
                 <Field key={f.key} f={f} value={inst.settings[f.key]} onChange={(v) => s.updateWidgetSettings(inst.id, { [f.key]: v })} />
               ))}
               {!def.singleton && <button className="danger" onClick={() => { s.removeWidget(inst.id); }}>위젯 제거</button>}
@@ -137,20 +139,23 @@ export function SettingsPanel() {
               </label>
               <Slider label="카드 불투명도" value={s.surfaceOpacity} min={10} max={100} step={2}
                 suffix="%" onChange={s.setSurfaceOpacity} />
-              <Slider label="배경 블러 (실험적)" value={s.blurStrength} min={0} max={6} step={1}
+              <Slider label="배경 블러" value={s.blurStrength} min={0} max={6} step={1}
                 title="카드 뒤에 배경화면을 블러해서 깝니다. 0 이면 단색 표면만 쓰고 캡처도 하지 않습니다."
                 suffix={s.blurStrength === 0 ? " (끔)" : ""} onChange={s.setBlurStrength} />
               <Slider label="모서리 반경" value={s.cornerRadius} min={0} max={32} step={2}
                 suffix="px" onChange={s.setCornerRadius} />
+              <Slider label="테두리 진하기" value={s.borderStrength} min={0} max={100} step={5}
+                title="카드 경계선의 진하기. 배경화면이 복잡하면 올려서 카드를 또렷하게 만듭니다."
+                suffix="%" onChange={s.setBorderStrength} />
               <div className="dim" style={{ fontSize: "var(--fs-meta)" }}>
                 {s.blurStrength === 0
-                  ? "꺼져 있습니다 — 화면을 캡처하지 않습니다. 실시간 갱신은 아직 미완이라 기본은 꺼짐입니다."
+                  ? "꺼져 있습니다 — 화면을 캡처하지 않고 카드는 단색/반투명 표면만 씁니다."
                   : s.wallpaperError
                     ? `배경 블러: ${s.wallpaperError}`
                     : s.wallpaperSource === "capture"
-                      ? "배경 블러: 화면 캡처 (라이브 배경화면 반영, 10초마다 스냅샷)"
+                      ? "배경 블러: 화면 캡처 — 라이브 배경화면도 따라갑니다 (움직이면 2초, 멈춰 있으면 10초마다 확인)"
                       : s.wallpaperSource === "file"
-                        ? "배경 블러: 배경화면 파일 (30초마다)"
+                        ? "배경 블러: 배경화면 파일 (30초마다) — 화면 캡처가 막혀 있습니다"
                         : "배경 블러: 준비 중…"}
               </div>
               <label className="row" title="위젯을 키우면 내용도 같은 비율로 확대 (넘치는 내용은 항상 자동 축소)"><span>크기에 맞춰 내용 확대</span>
@@ -183,6 +188,10 @@ export function SettingsPanel() {
               </div>
             </section>
             <section>
+              <h4>업데이트</h4>
+              <UpdateSection u={updater} />
+            </section>
+            <section>
               <h4>배치된 위젯</h4>
               <button className="link" onClick={() => { if (confirm("모든 위젯을 기본 배치로 되돌릴까요?")) s.resetLayout(); }}>↺ 기본 레이아웃으로 초기화</button>
               {s.instances.map((i) => (
@@ -198,8 +207,46 @@ export function SettingsPanel() {
   );
 }
 
+/** 버전 표시 + 업데이트 확인·설치. 상태 하나가 곧 화면이다 (`core/updater.ts`). */
+function UpdateSection({ u }: { u: ReturnType<typeof useUpdater> }) {
+  const s = u.state;
+  return (
+    <>
+      <div className="row"><span>현재 버전</span><span className="dim">{u.version || "…"}</span></div>
+      {!UPDATER_ENABLED ? (
+        <p className="dim field-note">개발 실행에서는 업데이트를 확인하지 않습니다 (설치본에서 동작).</p>
+      ) : (
+        <>
+          <div className="row">
+            <span>
+              {s.kind === "checking" ? "확인 중…"
+                : s.kind === "none" ? "최신 버전입니다"
+                : s.kind === "available" ? `새 버전 ${s.version}`
+                : s.kind === "downloading" ? `받는 중… ${s.percent === null ? "" : `${s.percent}%`}`
+                : s.kind === "ready" ? `${s.version} 설치 완료`
+                : s.kind === "error" ? "확인하지 못했습니다"
+                : "업데이트"}
+            </span>
+            <span className="pair">
+              {s.kind === "available" && <button onClick={() => { u.install(); }}>지금 설치</button>}
+              {s.kind === "ready" && <button onClick={u.restart}>다시 시작</button>}
+              {(s.kind === "idle" || s.kind === "none" || s.kind === "error") &&
+                <button onClick={() => { u.checkNow(); }}>업데이트 확인</button>}
+            </span>
+          </div>
+          {s.kind === "error" && <p className="dim field-note">{s.message}</p>}
+          {s.kind === "available" && s.notes && <p className="dim field-note">{s.notes}</p>}
+          {s.kind === "ready" && <p className="dim field-note">다시 시작하면 새 버전으로 열립니다.</p>}
+        </>
+      )}
+    </>
+  );
+}
+
 function Field({ f, value, onChange }: { f: SettingField; value: unknown; onChange: (v: unknown) => void }) {
   switch (f.type) {
+    case "note":
+      return <p className="dim field-note">{f.label}</p>;
     case "boolean":
       return <label className="row"><span>{f.label}</span><input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} /></label>;
     case "number":

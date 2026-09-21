@@ -19,7 +19,55 @@ interface Playback {
 }
 interface Playlist { uri: string; name: string; total: number; owner: string; image: string | null }
 
-const mmss = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
+// 음수는 0:00 으로 — 시계가 잠깐이라도 "-1:59" 를 보여주면 고장으로 읽힌다.
+const mmss = (ms: number) => {
+  const t = Math.max(0, ms);
+  return `${Math.floor(t / 60000)}:${String(Math.floor((t % 60000) / 1000)).padStart(2, "0")}`;
+};
+
+/**
+ * 진행 시간 — **이 컴포넌트만** 1초마다 다시 그린다.
+ * 위쪽(앨범 아트·플레이리스트 목록)까지 매초 리렌더할 이유가 없다.
+ *
+ * 기준점은 백엔드가 찍은 `fetched_at` 이고, 새 폴링 결과가 올 때마다 0 에서 다시 센다.
+ * 예전에는 부모가 들고 있던 `now` 상태에서 `fetched_at` 을 뺐는데, 그 타이머는 **재생 중에만**
+ * 돌아 멈춰 있는 동안 `now` 가 과거에 굳었다. 그래서 재생을 누른 직후 첫 1초 동안
+ * `now - fetched_at` 이 **음수**가 되어 진행 시간이 "-3:20" 처럼 찍혔다 (사용자 보고).
+ */
+function Progress({ playback }: { playback: Playback | null }) {
+  const [elapsed, setElapsed] = useState(0);
+  // 곡이 끝난 직후 Spotify 가 아직 다음 곡으로 넘어가지 않았으면 매초 다시 묻게 된다 — 간격을 둔다.
+  const lastPoll = useRef(0);
+  const fetchedAt = playback?.fetched_at ?? 0;
+  const playing = !!playback?.is_playing;
+  const duration = playback?.duration_ms ?? 0;
+  const base = playback?.progress_ms ?? 0;
+
+  useEffect(() => {
+    setElapsed(0);
+    if (!playing) return;
+    const t = setInterval(() => {
+      const e = Math.max(0, Date.now() - fetchedAt);
+      setElapsed(e);
+      // 곡이 끝났으면 다음 폴링(최대 5초)을 기다리지 않고 바로 물어본다.
+      if (duration > 0 && base + e >= duration && Date.now() - lastPoll.current > 3000) {
+        clearInterval(t);
+        lastPoll.current = Date.now();
+        invoke("spotify_poll").catch(() => {});
+      }
+    }, 1000);
+    return () => clearInterval(t);
+  }, [playing, fetchedAt, duration, base]);
+
+  const progress = duration > 0 ? Math.min(duration, base + elapsed) : base + elapsed;
+  const pct = duration > 0 ? (progress / duration) * 100 : 0;
+  return (
+    <div className="sp-progress">
+      <div className="sp-bar"><span style={{ width: `${pct}%` }} /></div>
+      <div className="sp-times dim"><span>{mmss(progress)}</span><span>{mmss(duration)}</span></div>
+    </div>
+  );
+}
 
 export function Spotify({ instanceId, settings, size }: WidgetProps<SpotifySettings>) {
   const status = useProviderData<Status>("spotify://status", "spotify_status");
@@ -27,7 +75,6 @@ export function Spotify({ instanceId, settings, size }: WidgetProps<SpotifySetti
   const accent = useSettings((s) => s.instances.find((i) => i.id === instanceId)?.accent);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState(Date.now());
   const [volume, setVolume] = useState(50); // 서버 값이 오기 전 기본 표시 (0이면 음소거 아이콘으로 오해)
   const draggingVolume = useRef(false);
   const prevVolume = useRef<number | null>(null);
@@ -41,12 +88,6 @@ export function Spotify({ instanceId, settings, size }: WidgetProps<SpotifySetti
     if (status?.logged_in) invoke<Playlist[]>("spotify_playlists").then(setPlaylists).catch(() => {});
     else setPlaylists([]);
   }, [status?.logged_in, status?.display_name]);
-  // 진행바 보간 (1초)
-  useEffect(() => {
-    if (!playback?.is_playing) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [playback?.is_playing]);
 
   const control = async (action: string, arg?: string) => {
     setError(null);
@@ -74,8 +115,6 @@ export function Spotify({ instanceId, settings, size }: WidgetProps<SpotifySetti
   if (!status) return <div className="dim">불러오는 중…</div>;
   if (!status.logged_in) return <Login status={status} />;
 
-  const progress = playback ? Math.min(playback.duration_ms, playback.progress_ms + (playback.is_playing ? now - playback.fetched_at : 0)) : 0;
-  const pct = playback?.duration_ms ? (progress / playback.duration_ms) * 100 : 0;
   const compact = size.h < 170;
   const artSize = Math.max(48, Math.min(96, size.h * 0.45));
 
@@ -96,10 +135,7 @@ export function Spotify({ instanceId, settings, size }: WidgetProps<SpotifySetti
           ) : (
             <div className="dim">재생 중인 곡 없음{status.display_name ? ` · ${status.display_name}` : ""}</div>
           )}
-          <div className="sp-progress" onClick={undefined}>
-            <div className="sp-bar"><span style={{ width: `${pct}%` }} /></div>
-            <div className="sp-times dim"><span>{mmss(progress)}</span><span>{playback ? mmss(playback.duration_ms) : "0:00"}</span></div>
-          </div>
+          <Progress playback={playback} />
           <div className="sp-controls">
             <button onClick={() => control("previous")} title="이전">⏮</button>
             <button className="sp-play" onClick={() => control(playback?.is_playing ? "pause" : "play")} title={playback?.is_playing ? "일시정지" : "재생"}>

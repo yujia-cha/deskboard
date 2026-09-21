@@ -1,4 +1,4 @@
-//! LibreHardwareMonitor 웹서버(`http://localhost:8085/data.json`)에서 CPU 패키지 온도를 읽는다.
+//! LibreHardwareMonitor 웹서버(`http://127.0.0.1:8085/data.json`)에서 CPU 패키지 온도를 읽는다.
 //! Windows 사용자 모드에서는 CPU 온도를 직접 읽을 수 없어 LHM 이 켜져 있을 때만 동작한다.
 //! 연결 실패 시 30초마다 재시도.
 
@@ -6,7 +6,9 @@ use super::{SensorSample, SensorSource};
 use serde_json::Value;
 use std::time::{Duration, Instant};
 
-const URL: &str = "http://localhost:8085/data.json";
+// `localhost` 로 쓰지 않는다 — IPv6 를 먼저 푸는 PC 에서는 v4 로만 바인드된 LHM 에
+// 닿지 못해 매번 타임아웃(800ms)을 통째로 기다린다.
+const URL: &str = "http://127.0.0.1:8085/data.json";
 
 pub struct LhmSource {
     client: reqwest::blocking::Client,

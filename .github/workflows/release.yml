@@ -1,0 +1,60 @@
+# 태그를 밀면 설치 파일을 만들어 릴리스에 붙인다.
+#
+# 저장소에는 소스만 올린다 — 설치 파일은 여기(Windows 러너)에서 만들어진다.
+# 앱의 자동 업데이트는 이 릴리스가 남기는 `latest.json` 을 본다
+# (`src-tauri/tauri.conf.json` 의 `plugins.updater.endpoints`).
+#
+# 필요한 저장소 시크릿 (Settings → Secrets and variables → Actions):
+#   TAURI_SIGNING_PRIVATE_KEY           `~/.tauri/deskboard.key` 의 내용 전체
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  그 키의 비밀번호 (없이 만들었으면 빈 값)
+# 서명이 맞지 않는 설치본은 앱이 거부한다 — 이 키를 잃으면 자동 업데이트가 끊긴다.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write # 릴리스를 만들고 파일을 붙이는 데 필요하다
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Rust 빌드가 이 워크플로의 대부분이다 — 캐시가 없으면 매번 처음부터 컴파일한다.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # 깨진 것을 릴리스로 내보내지 않는다.
+      - run: npm run typecheck
+      - run: npm test
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: deskboard ${{ github.ref_name }}
+          releaseBody: |
+            설치: 아래 `deskboard_*_x64-setup.exe` 를 받아 실행하세요.
+            이미 쓰고 있다면 설정 → 업데이트에서 바로 받을 수 있습니다.
+          # 초안으로 두면 `releases/latest/download/latest.json` 이 404 가 되어
+          # 이미 깔린 앱이 이 릴리스를 영영 못 본다.
+          releaseDraft: false
+          prerelease: false

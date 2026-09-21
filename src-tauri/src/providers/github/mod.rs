@@ -1,8 +1,11 @@
-//! GitHub — 리뷰 요청받은 PR, 미확인 알림, 설정한 저장소의 최신 CI 결과.
+//! GitHub — 기여도 잔디, 리뷰 요청·담당 이슈, 설정한 저장소의 PR/이슈/알림/CI.
 //!
 //! Personal Access Token 을 쓴다. OAuth Device Flow 보다 단순하고 스코프 통제가 명확하다.
 //! 토큰은 **DPAPI 로 암호화해** `github.dat` 에 둔다 (`providers/secrets`) — 평문으로 두는
 //! 기존 `spotify.json`/`claude.json` 과 달리, PAT 는 조직 저장소까지 열 수 있어 위험도가 다르다.
+//!
+//! **호출은 주기마다 두 번뿐이다**: GraphQL 한 번(`parse::build_query` — 잔디·검색·저장소 전부)
+//! 과 REST `/notifications` 한 번(GraphQL 에는 알림이 없다). 저장소를 늘려도 호출 수는 그대로다.
 //!
 //! 위젯이 떠 있을 때만 5분 주기로 부른다. 인증 요청은 시간당 5000회라 여유롭지만,
 //! 남은 한도가 바닥나면 알아서 물러선다.
@@ -10,7 +13,7 @@
 mod parse;
 
 use super::Provider;
-use parse::{parse_checks, parse_count, parse_notifications, Check};
+use parse::{build_query, normalize_repos, parse_graphql, parse_notifications, Contributions, RepoStat};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -21,13 +24,15 @@ use tauri::{AppHandle, Emitter, Manager};
 pub use parse::rate_limit_backoff;
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
-/// CI 를 확인할 저장소 목록 ("owner/repo").
+/// 자세히 볼 저장소 목록 ("owner/repo").
 static REPOS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// 토큰이나 저장소가 막 바뀌었다 — 자고 있지 말고 바로 다시 읽어라.
 static DIRTY: AtomicBool = AtomicBool::new(false);
 
 const POLL: Duration = Duration::from_secs(5 * 60);
 const SLICE: Duration = Duration::from_secs(2);
+/// 한 번에 들여다볼 저장소 수. 질의가 커지면 GraphQL 비용도 같이 커진다.
+const MAX_REPOS: usize = 8;
 
 /// `total` 만큼 자되, 토큰/저장소가 바뀌거나 위젯이 사라지면 곧바로 깬다.
 fn nap(total: Duration) {
@@ -45,12 +50,18 @@ const API: &str = "https://api.github.com";
 
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct GithubSnapshot {
+    /// 내 계정 이름 (잔디 클릭 시 프로필로 보낼 때 쓴다)
+    pub login: String,
     /// 내가 리뷰해야 할 열린 PR 수
     pub review_requests: u32,
+    /// 나에게 배정된 열린 이슈 수
+    pub assigned_issues: u32,
     /// 미확인 알림 수
     pub notifications: u32,
-    /// 설정한 저장소들의 최신 workflow 결과
-    pub checks: Vec<Check>,
+    /// 최근 1년 기여도 달력
+    pub contributions: Option<Contributions>,
+    /// 설정한 저장소별 현황
+    pub repos: Vec<RepoStat>,
     /// 토큰이 저장돼 있는가
     pub authed: bool,
     pub error: Option<String>,
@@ -97,8 +108,10 @@ impl ApiError {
     pub fn message(&self) -> String {
         match self {
             ApiError::Unauthorized => "토큰이 거부됐습니다 — 다시 입력해 주세요".into(),
-            // fine-grained 토큰은 검색 API 에서 403 이 잘 난다. 어디를 고쳐야 하는지 알려준다.
-            ApiError::Forbidden => "권한이 부족합니다 — classic 토큰에 repo·notifications 스코프를 주세요".into(),
+            // fine-grained 토큰은 검색·GraphQL 에서 403 이 잘 난다. 어디를 고쳐야 하는지 알려준다.
+            ApiError::Forbidden => {
+                "권한이 부족합니다 — classic 토큰에 repo·notifications·read:user 스코프를 주세요".into()
+            }
             ApiError::RateLimited => "GitHub 호출 한도를 다 썼습니다 — 잠시 뒤 다시 시도합니다".into(),
             ApiError::Other(m) => m.clone(),
         }
@@ -110,16 +123,8 @@ impl ApiError {
     }
 }
 
-/// GET 한 번. 본문과 남은 호출 수를 돌려준다.
-fn get(c: &reqwest::blocking::Client, token: &str, url: &str) -> Result<(String, Option<u32>), ApiError> {
-    let res = c
-        .get(url)
-        .header("Authorization", format!("Bearer {token}"))
-        .header("Accept", "application/vnd.github+json")
-        .header("X-GitHub-Api-Version", "2022-11-28")
-        .send()
-        .map_err(|_| ApiError::Other("GitHub 에 연결하지 못했습니다".into()))?;
-
+/// 응답 하나를 본문 + 남은 호출 수로 바꾼다.
+fn read(res: reqwest::blocking::Response) -> Result<(String, Option<u32>), ApiError> {
     let remaining = res
         .headers()
         .get("x-ratelimit-remaining")
@@ -142,23 +147,54 @@ fn get(c: &reqwest::blocking::Client, token: &str, url: &str) -> Result<(String,
     Ok((body, remaining))
 }
 
-fn fetch(app: &AppHandle, tok: &str, repos: &[String]) -> GithubSnapshot {
+fn get(c: &reqwest::blocking::Client, token: &str, url: &str) -> Result<(String, Option<u32>), ApiError> {
+    let res = c
+        .get(url)
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Accept", "application/vnd.github+json")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .send()
+        .map_err(|_| ApiError::Other("GitHub 에 연결하지 못했습니다".into()))?;
+    read(res)
+}
+
+/// GraphQL 은 문법 오류·권한 문제도 **200 + errors** 로 돌려준다 — 상태 코드만 보면 안 된다.
+/// 본문을 그대로 넘기고 판단은 `parse_graphql` 이 한다.
+fn graphql(c: &reqwest::blocking::Client, token: &str, query: &str) -> Result<(String, Option<u32>), ApiError> {
+    let res = c
+        .post(format!("{API}/graphql"))
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Accept", "application/vnd.github+json")
+        .json(&serde_json::json!({ "query": query }))
+        .send()
+        .map_err(|_| ApiError::Other("GitHub 에 연결하지 못했습니다".into()))?;
+    read(res)
+}
+
+fn fetch(tok: &str, repos: &[String]) -> GithubSnapshot {
     let c = match client() {
         Ok(c) => c,
         Err(e) => return GithubSnapshot { authed: true, error: Some(e), ..Default::default() },
     };
     let mut out = GithubSnapshot { authed: true, ..Default::default() };
     let mut remaining: Option<u32> = None;
-    // 한 곳이 막혀도 나머지는 보여준다 — 검색 API 하나 때문에 알림까지 못 보면 곤란하다.
+    // 한 곳이 막혀도 나머지는 보여준다 — 잔디 하나 때문에 알림까지 못 보면 곤란하다.
     let mut errors: Vec<String> = Vec::new();
 
-    // 리뷰 요청받은 열린 PR
-    let url = format!("{API}/search/issues?q=is:open+is:pr+review-requested:@me&per_page=1");
-    match get(&c, tok, &url) {
+    match graphql(&c, tok, &build_query(repos)) {
         Ok((body, r)) => {
             remaining = r;
-            match parse_count(&body) {
-                Ok(n) => out.review_requests = n,
+            match parse_graphql(&body, repos) {
+                Ok(g) => {
+                    out.login = g.login;
+                    out.review_requests = g.review_requests;
+                    out.assigned_issues = g.assigned_issues;
+                    out.contributions = g.contributions;
+                    out.repos = g.repos;
+                    if let Some(e) = g.error {
+                        errors.push(e);
+                    }
+                }
                 Err(e) => errors.push(e),
             }
         }
@@ -167,16 +203,21 @@ fn fetch(app: &AppHandle, tok: &str, repos: &[String]) -> GithubSnapshot {
             if e.needs_new_token() {
                 out.authed = false;
             }
-            errors.push(format!("리뷰 요청: {}", e.message()));
+            errors.push(e.message());
         }
     }
 
-    // 미확인 알림 — 위가 실패해도 따로 시도한다
+    // 미확인 알림 — 위가 실패해도 따로 시도한다 (GraphQL 에는 알림 API 가 없다)
     match get(&c, tok, &format!("{API}/notifications?per_page=50")) {
         Ok((body, r)) => {
             remaining = r.or(remaining);
             match parse_notifications(&body) {
-                Ok(n) => out.notifications = n,
+                Ok(n) => {
+                    out.notifications = n.total;
+                    for repo in &mut out.repos {
+                        repo.notifications = *n.by_repo.get(&repo.repo).unwrap_or(&0);
+                    }
+                }
                 Err(e) => errors.push(e),
             }
         }
@@ -188,22 +229,6 @@ fn fetch(app: &AppHandle, tok: &str, repos: &[String]) -> GithubSnapshot {
         }
     }
 
-    // 저장소별 최신 workflow 결과
-    for repo in repos.iter().take(5) {
-        let url = format!("{API}/repos/{repo}/actions/runs?per_page=1");
-        match get(&c, tok, &url) {
-            Ok((body, r)) => {
-                remaining = r.or(remaining);
-                if let Ok(mut ck) = parse_checks(&body, repo) {
-                    out.checks.append(&mut ck);
-                }
-            }
-            // CI 하나가 안 되는 건 전체 실패로 보지 않는다 (저장소 이름 오타 등)
-            Err(e) => log::debug!("github: {repo} — {}", e.message()),
-        }
-    }
-
-    let _ = app;
     if let Some(n) = remaining {
         log::debug!("github: 남은 호출 {n}");
     }
@@ -243,17 +268,13 @@ pub fn github_logout(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// 위젯이 떠 있는지와 CI 를 볼 저장소를 알려준다.
+/// 위젯이 떠 있는지와 자세히 볼 저장소를 알려준다.
 #[tauri::command]
 pub fn github_set_active(active: bool, repos: Vec<String>) {
     ACTIVE.store(active, Ordering::Relaxed);
     DIRTY.store(true, Ordering::Relaxed);
     if let Ok(mut r) = REPOS.lock() {
-        *r = repos
-            .into_iter()
-            .map(|s| s.trim().trim_matches('/').to_string())
-            .filter(|s| s.contains('/'))
-            .collect();
+        *r = normalize_repos(repos, MAX_REPOS);
     }
 }
 
@@ -264,7 +285,7 @@ pub fn github_fetch(app: AppHandle) -> GithubSnapshot {
         return GithubSnapshot { authed: false, ..Default::default() };
     };
     let repos = REPOS.lock().ok().map(|r| r.clone()).unwrap_or_default();
-    fetch(&app, &tok, &repos)
+    fetch(&tok, &repos)
 }
 
 pub struct GithubProvider;
@@ -289,7 +310,7 @@ impl Provider for GithubProvider {
                     continue;
                 };
                 let repos = REPOS.lock().ok().map(|r| r.clone()).unwrap_or_default();
-                let snap = fetch(&app, &tok, &repos);
+                let snap = fetch(&tok, &repos);
                 let failed = snap.error.is_some();
                 if let Some(e) = &snap.error {
                     log::warn!("github: {e}");

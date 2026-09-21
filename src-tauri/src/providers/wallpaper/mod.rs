@@ -2,24 +2,33 @@
 //!
 //! 창은 완전 투명이라 `backdrop-filter` 가 샘플링할 것이 없다. 대신 배경화면 이미지를 직접 읽어
 //! 블러 처리한 뒤, 프론트가 각 카드 위치에 맞춰 잘라 깐다. 창이 작업영역 전체를 덮고
-//! always-on-bottom 이라 좌표가 정확히 맞으므로 이 방식이 성립한다.
+//! 바탕화면 바로 위에 있어 좌표가 정확히 맞으므로 이 방식이 성립한다.
 //!
 //! 배경화면을 얻는 방법이 둘이다:
 //!  1. **바탕화면 캡처**(기본) — 화면에 실제로 그려진 것을 찍는다. Wallpaper Engine 같은
 //!     라이브 배경화면도 그대로 잡히고, 배치(채우기/맞춤)를 계산할 필요도 없다.
 //!  2. **배경화면 파일 읽기**(폴백) — 캡처가 막히거나 빈 화면이 나올 때.
 //!
-//! **기본은 꺼짐이다.** 실측(1920x1080, 10초 주기)에서 상시 CPU 가 0.94% → 6.35%(1코어 기준)로
-//! 올랐다. 바탕화면 위젯이 낼 비용이 아니다. 꺼져 있으면 이 프로바이더는 캡처도 블러도 하지
-//! 않고 잠들어 있다(`ACTIVE`).
+//! ## 싸게 만든 방법 (기본으로 켤 수 있게 된 이유)
 //!
-//! 제대로 다시 할 때 줄일 곳 (비용 순서대로):
-//!  1. **전체 해상도로 찍고 Rust 에서 줄이는 것** — `StretchBlt` 로 작은 DC(예: 320x180)에
-//!     바로 축소해 받으면 2M 픽셀 복사와 `downscale` 이 통째로 사라진다. 여기가 제일 크다.
-//!  2. **PNG 인코딩 + base64** — 매번 다시 인코딩한다. 원시 픽셀을 커스텀 프로토콜이나
-//!     공유 파일로 넘기면 없앨 수 있다.
-//!  3. **BGRA→RGB 픽셀 루프** — 1번을 하면 대상이 작아져 자동으로 싸진다.
-//! 이 셋을 하면 실시간(1~2초) 갱신도 지금보다 싸게 된다.
+//! 처음 구현은 상시 CPU 를 0.94% → 6.35%(1코어 기준) 로 올렸고 그래서 기본이 꺼짐이었다.
+//! 비싼 것은 블러가 아니라 **픽셀을 옮기는 일**이었다. 셋을 고쳤다:
+//!
+//!  1. **GDI 안에서 자르고 줄여서 받는다** (`capture::capture_monitor`). 전체 해상도를
+//!     `GetDIBits` 로 가져와 Rust 에서 자르고 줄이던 것을 `StretchBlt` 하나로 바꿨다 —
+//!     CPU 로 넘어오는 픽셀이 200만 → 6만(320x180) 으로 줄었다.
+//!  2. **안 바뀌었으면 아무것도 하지 않는다.** 받은 작은 그림의 해시가 지난번과 같으면
+//!     블러도 PNG 인코딩도 emit 도 건너뛴다. 정적 배경화면에서는 주기마다 남는 일이
+//!     `PrintWindow` + `StretchBlt` 뿐이다.
+//!  3. **주기를 결과에 맞춘다.** 그림이 움직이고 있으면 빠르게(2초), 몇 번 연속으로
+//!     그대로면 천천히(10초) 확인한다. 라이브 배경화면은 따라가고 정적 배경화면은 잔다.
+//!
+//! 실측(release 빌드, 1920x1080, 같은 기계에서 60초씩): **끔 1.46% → 켬 1.95%**(1코어 기준).
+//! 고치기 전에는 0.94% → 6.35% 였다 — 블러가 더하는 비용이 5.4%p 에서 0.5%p 로 줄었다.
+//! 그래서 기본값을 켜짐으로 돌렸다.
+//!
+//! 남은 비용은 `PrintWindow` 자체다 — 이건 바탕화면을 다시 그리게 하는 일이라 피할 수 없다.
+//! 더 줄이려면 PNG+base64 대신 원시 픽셀을 커스텀 프로토콜로 넘기는 길이 남아 있다.
 //!
 //! 정적 스냅샷이라는 한계도 남는다 — 움직이는 배경화면은 갱신 주기만큼 늦게 따라온다.
 
@@ -36,7 +45,7 @@ use std::time::{Duration, SystemTime};
 use tauri::{AppHandle, Emitter};
 
 pub use blur::{box_blur, downscale};
-pub use capture::{capture_desktop, crop_monitor};
+pub use capture::capture_desktop;
 pub use layout::{layout, Fit};
 
 /// 프론트가 CSS 변수로 쓰는 배경화면 스냅샷.
@@ -136,8 +145,12 @@ pub fn wallpaper_set_active(active: bool) {
 
 /// 꺼져 있을 때 다시 확인하는 주기. 일이 없으므로 길어도 된다.
 const IDLE_PERIOD: Duration = Duration::from_secs(2);
-/// 캡처 모드 갱신 주기. 라이브 배경화면은 움직이므로 자주 따라가야 한다.
-const CAPTURE_PERIOD: Duration = Duration::from_secs(10);
+/// 캡처 모드에서 **그림이 움직이고 있을 때**의 주기. 라이브 배경화면을 따라가는 속도다.
+const CAPTURE_PERIOD: Duration = Duration::from_secs(2);
+/// 캡처 모드에서 **계속 그대로일 때**의 주기. 정적 배경화면은 이쪽으로 내려앉는다.
+const CAPTURE_IDLE_PERIOD: Duration = Duration::from_secs(10);
+/// 이만큼 연속으로 그대로면 느린 주기로 내려간다.
+const STILL_BEFORE_SLOWDOWN: u32 = 3;
 /// 파일 모드 갱신 주기 — 배경화면을 바꿨는지 보는 것뿐이라 드물어도 된다.
 const FILE_PERIOD: Duration = Duration::from_secs(30);
 
@@ -207,8 +220,11 @@ pub fn snapshot(
 }
 
 /// 이미지를 블러해 data URI 로. 실패하면 사람이 읽을 메시지를 돌려준다.
+///
+/// 들어오는 그림이 이미 작다는 전제다 (캡처 경로는 GDI 가 줄여서 준다). 큰 그림은
+/// 부르는 쪽에서 `downscale` 을 먼저 거친다 — 파일 경로가 그렇게 한다.
 fn encode_blurred(img: &image::RgbImage, passes: u32) -> Result<String, String> {
-    let small = downscale(img, MAX_EDGE);
+    let small = if img.width().max(img.height()) > MAX_EDGE { downscale(img, MAX_EDGE) } else { img.clone() };
     let blurred = box_blur(&small, passes.clamp(1, 6));
     let mut png = Vec::new();
     image::DynamicImage::ImageRgb8(blurred)
@@ -220,24 +236,20 @@ fn encode_blurred(img: &image::RgbImage, passes: u32) -> Result<String, String> 
     ))
 }
 
-/// 화면에 실제로 그려진 바탕화면을 찍어 스냅샷을 만든다.
+/// 이미 잘라 줄여 받은 캡처본으로 스냅샷을 만든다.
 ///
-/// 캡처본은 이미 모니터 해상도로 그려져 있으므로 채우기/맞춤 계산이 필요 없다 —
-/// 잘라낸 조각이 곧 모니터를 덮는 그림이다.
-pub fn snapshot_from_capture(
-    img: &image::RgbImage,
-    capture_origin: (i32, i32),
+/// 캡처본은 이 모니터를 그대로 덮는 그림이므로 채우기/맞춤 계산이 필요 없다. 축소된 것을
+/// 원래 크기로 늘려 쓰는 건 의도된 것이다 — 어차피 블러로 뭉갤 그림이다.
+pub fn wallpaper_from_capture(
+    small: &image::RgbImage,
     monitor: (i32, i32, u32, u32),
     work_offset: (i32, i32),
     passes: u32,
-) -> Option<Wallpaper> {
-    let mine = crop_monitor(img, capture_origin, monitor)?;
-    let (w, h) = (mine.width() as f64, mine.height() as f64);
-    let data_uri = encode_blurred(&mine, passes).ok()?;
-    Some(Wallpaper {
-        data_uri,
-        draw_w: w,
-        draw_h: h,
+) -> Result<Wallpaper, String> {
+    Ok(Wallpaper {
+        data_uri: encode_blurred(small, passes)?,
+        draw_w: monitor.2 as f64,
+        draw_h: monitor.3 as f64,
         // 캡처 조각의 원점 = 모니터 좌상단. 창은 작업영역만 덮으므로 그만큼 민다.
         ox: -(work_offset.0 as f64),
         oy: -(work_offset.1 as f64),
@@ -261,13 +273,26 @@ fn canvas_geometry(app: &AppHandle) -> ((i32, i32, u32, u32), (i32, i32)) {
 /// 캡처를 먼저 시도하고, 안 되면 배경화면 파일을 읽는다.
 fn build(app: &AppHandle, passes: u32) -> Wallpaper {
     let (monitor, work) = canvas_geometry(app);
-    if let Some((img, origin)) = capture_desktop() {
-        if let Some(wp) = snapshot_from_capture(&img, origin, monitor, work, passes) {
-            return wp;
+    if let Some(img) = capture_desktop(monitor, MAX_EDGE) {
+        match wallpaper_from_capture(&img, monitor, work, passes) {
+            Ok(wp) => return wp,
+            Err(e) => log::warn!("바탕화면 캡처를 이미지로 만들지 못했습니다 ({e}) — 파일 방식으로 대체"),
         }
-        log::warn!("바탕화면 캡처는 됐지만 이 모니터 영역을 잘라내지 못했습니다 — 파일 방식으로 대체");
     }
     snapshot(&SystemWallpaper, desktop_fit(), (monitor.2, monitor.3), work, passes)
+}
+
+/// 캡처본이 지난번과 같은지 보는 싼 지문 (FNV-1a).
+///
+/// 같으면 블러도 인코딩도 emit 도 건너뛴다 — 정적 배경화면에서 주기가 공짜에 가까워지는 이유다.
+/// 블러 강도도 함께 섞는다. 강도만 바뀌고 그림이 같을 때 화면이 안 바뀌면 안 된다.
+fn fingerprint(img: &image::RgbImage, passes: u32) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in img.as_raw().iter().copied().chain(passes.to_le_bytes()) {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x1000_0000_01b3);
+    }
+    h
 }
 
 fn mtime(p: &PathBuf) -> Option<SystemTime> {
@@ -297,45 +322,70 @@ impl Provider for WallpaperProvider {
                 let src = SystemWallpaper;
                 let mut seen: Option<(PathBuf, Option<SystemTime>, Fit, (i32, i32, u32, u32))> = None;
                 let mut was_capture = false;
+                // 마지막으로 보낸 캡처본의 지문 — 같으면 블러도 인코딩도 하지 않는다.
+                let mut last_shot: Option<u64> = None;
+                let mut still: u32 = 0;
                 loop {
                     // 꺼져 있으면 캡처도 블러도 하지 않는다 — 깨어나기만 하고 바로 잔다.
                     if !ACTIVE.load(Ordering::Relaxed) {
                         seen = None;
                         was_capture = false;
+                        last_shot = None;
+                        still = 0;
                         std::thread::sleep(IDLE_PERIOD);
                         continue;
                     }
                     let passes = PASSES.load(Ordering::Relaxed);
-                    let snap = build(&app, passes);
-                    let capturing = snap.source == "capture";
+                    let (monitor, work) = canvas_geometry(&app);
 
-                    // 캡처 모드는 화면이 계속 움직이므로(라이브 배경화면) 매번 보낸다.
-                    // 파일 모드는 배경화면·배치·모니터가 바뀌었을 때만 — 블러는 공짜가 아니다.
-                    let changed = if capturing {
-                        true
-                    } else {
-                        let fit = desktop_fit();
-                        let (monitor, _) = canvas_geometry(&app);
-                        let now = src.path().map(|p| {
-                            let t = mtime(&p);
-                            (p, t, fit, monitor)
+                    // --- 캡처 경로 ---
+                    if let Some(shot) = capture_desktop(monitor, MAX_EDGE) {
+                        let fp = fingerprint(&shot, passes);
+                        // 지난번과 같은 그림이면 여기서 끝난다. 이 주기에 든 비용은
+                        // PrintWindow + StretchBlt + 작은 GetDIBits 뿐이다.
+                        if last_shot == Some(fp) && was_capture {
+                            still = still.saturating_add(1);
+                        } else {
+                            match wallpaper_from_capture(&shot, monitor, work, passes) {
+                                Ok(wp) => {
+                                    last_shot = Some(fp);
+                                    still = 0;
+                                    let _ = app.emit("wallpaper://update", wp);
+                                }
+                                Err(e) => log::warn!("wallpaper: {e}"),
+                            }
+                        }
+                        was_capture = true;
+                        seen = None; // 캡처로 돌아왔다 — 파일 쪽 기억은 무효
+                        std::thread::sleep(if still >= STILL_BEFORE_SLOWDOWN {
+                            CAPTURE_IDLE_PERIOD
+                        } else {
+                            CAPTURE_PERIOD
                         });
-                        let differs = now != seen || was_capture;
-                        seen = now;
-                        differs
-                    };
-                    was_capture = capturing;
+                        continue;
+                    }
+
+                    // --- 파일 경로 (캡처가 막혔거나 빈 화면) ---
+                    // 배경화면·배치·모니터가 바뀌었을 때만 다시 만든다. 블러는 공짜가 아니다.
+                    let fit = desktop_fit();
+                    let now = src.path().map(|p| {
+                        let t = mtime(&p);
+                        (p, t, fit, monitor)
+                    });
+                    let changed = now != seen || was_capture;
+                    seen = now;
+                    was_capture = false;
+                    last_shot = None;
+                    still = 0;
 
                     if changed {
+                        let snap = snapshot(&src, fit, (monitor.2, monitor.3), work, passes);
                         if let Some(e) = &snap.error {
                             log::warn!("wallpaper: {e}");
                         }
                         let _ = app.emit("wallpaper://update", snap);
                     }
-
-                    // 라이브 배경화면은 자주, 정적 배경화면은 드물게 확인한다.
-                    let wait = if capturing { CAPTURE_PERIOD } else { FILE_PERIOD };
-                    std::thread::sleep(wait);
+                    std::thread::sleep(FILE_PERIOD);
                 }
             })
             .expect("spawn wallpaper thread");

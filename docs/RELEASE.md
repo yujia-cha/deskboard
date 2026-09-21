@@ -38,7 +38,11 @@ GitHub PAT 는 DPAPI 로 `github.dat` 에, Spotify·Claude 토큰은 `%APPDATA%`
 | 시크릿 | 값 |
 |---|---|
 | `TAURI_SIGNING_PRIVATE_KEY` | `%USERPROFILE%\.tauri\deskboard.key` 파일 **내용 전체** |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 그 키의 비밀번호 (비밀번호 없이 만들었으면 빈 값) |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 키에 비밀번호를 걸었을 때만. **안 걸었으면 만들지 않는다** |
+
+지금 키는 비밀번호 없이 만들었으므로 **첫 번째 하나만** 넣으면 된다. GitHub 은 빈 시크릿을
+허용하지 않는데, 없는 시크릿은 워크플로에서 빈 문자열로 평가되어 환경 변수가 빈 값으로
+전달된다 — 비밀번호 없는 키에 필요한 것이 정확히 그 값이다.
 
 ```powershell
 Get-Content $env:USERPROFILE\.tauri\deskboard.key | Set-Clipboard

@@ -45,8 +45,13 @@ GitHub PAT 는 DPAPI 로 `github.dat` 에, Spotify·Claude 토큰은 `%APPDATA%`
 전달된다 — 비밀번호 없는 키에 필요한 것이 정확히 그 값이다.
 
 ```powershell
-Get-Content $env:USERPROFILE\.tauri\deskboard.key | Set-Clipboard
+Get-Content $env:USERPROFILE\.tauri\deskboard.key -Raw | Set-Clipboard
 ```
+
+붙여 넣은 값이 **`dW50cnVzdGVk` 로 시작하는 한 줄**인지 눈으로 확인한다. 키 파일은 348바이트
+한 줄짜리 base64 다(줄바꿈·따옴표·공백이 섞이면 안 된다). 워크플로의 "서명 키 시크릿 점검"
+스텝이 같은 것을 빌드 **전에** 보고 몇 초 만에 멈춰 준다 — 예전에는 20분을 컴파일한 뒤
+마지막 서명 단계에서 `failed to decode base64 secret key` 로 죽었다.
 
 - 공개 키는 `src-tauri/tauri.conf.json` 의 `plugins.updater.pubkey` 에 이미 들어 있다.
 - **개인 키를 잃으면 자동 업데이트가 끊긴다.** 새 키로 바꾸면 이미 깔린 앱들은 새 릴리스를

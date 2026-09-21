@@ -39,6 +39,26 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # 서명 키는 빌드 **맨 끝**에서야 쓰인다 — 잘못 들어가 있으면 20분을 컴파일한 뒤에 죽는다.
+      # 몇 초 만에 같은 사실을 알 수 있도록 형식만 먼저 본다. 값은 찍지 않는다(GitHub 이 가리기도 한다).
+      - name: 서명 키 시크릿 점검
+        shell: pwsh
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if (-not $env:KEY) {
+            throw "TAURI_SIGNING_PRIVATE_KEY 시크릿이 비어 있습니다. 저장소 Settings → Secrets and variables → Actions 에 등록하세요."
+          }
+          $k = $env:KEY.Trim()
+          Write-Host "키 길이: $($k.Length)자 (정상값은 300자 이상)"
+          if ($k -notmatch '^[A-Za-z0-9+/=]+$') {
+            throw "키에 base64 가 아닌 문자가 섞여 있습니다. deskboard.key 는 한 줄짜리 base64 입니다 - 파일 내용을 그대로(줄바꿈/따옴표/공백 없이) 넣으세요."
+          }
+          if (-not $k.StartsWith("dW50cnVzdGVk")) {
+            throw "키가 'dW50cnVzdGVk' 로 시작하지 않습니다. 다른 값이 들어갔습니다 - %USERPROFILE%\.tauri\deskboard.key 의 내용인지 확인하세요."
+          }
+          Write-Host "형식 OK"
+
       - run: npm ci
 
       # 깨진 것을 릴리스로 내보내지 않는다.

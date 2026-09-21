@@ -1,25 +1,152 @@
-/* 디자인 토큰. 반투명/단색 모드는 <html data-theme-mode="translucent|solid"> 로 전환된다. */
+/*
+ * 디자인 토큰.
+ *
+ * <html> 의 세 속성이 모양을 결정한다 (settings.ts::applyTheme 가 세팅):
+ *   data-palette    = "dark" | "light"                              글자·표면 색 계열
+ *   data-theme-mode = "translucent" | "solid"                       표면 반투명 여부
+ *   data-card-style = "glass" | "minimal" | "borderless" | "none"   카드 테두리·그림자
+ *
+ * 위젯은 여기 정의된 변수만 쓴다. 색을 하드코딩하면 팔레트 전환이 깨진다.
+ */
+
 :root {
+  /* --- 형태 --- */
   --radius: 16px;
   --gap: 12px;
+
+  /* --- 타이포 계층 --- */
+  --font: "Segoe UI Variable", "Segoe UI", "Pretendard", system-ui, sans-serif;
+  --mono: "Cascadia Code", "Consolas", monospace;
+  --fs-value: 28px;   /* 위젯의 주인공 숫자 */
+  --fs-title: 14px;   /* 제목·곡명 */
+  --fs-sub: 13px;     /* 부제목 */
+  --fs-label: 12px;   /* 항목 이름 */
+  --fs-meta: 11px;    /* 보조 설명 */
+  --fs-micro: 10px;   /* 단위·타임스탬프 */
+  --fw-value: 600;
+  --fw-title: 600;
+  --fw-bold: 700;
+  --fw-label: 400;
+  --lh-tight: 1.15;
+
+  /* --- 모션 --- */
+  --ease: cubic-bezier(.4, 0, .2, 1);
+  --dur-fast: .15s;
+  --dur: .25s;
+
+  /* --- 강조색 (settings.ts 가 덮어쓴다) --- */
   --accent: #7c9cff;
+  --brand-spotify: #1ed760;
+
+  /* --- 표면 불투명도 (settings.ts 가 덮어쓴다) --- */
+  --surface-alpha: 0.62;
+
+  /* --- 블러된 배경화면 (App.tsx 가 채운다) ---
+     창이 완전 투명이라 backdrop-filter 가 샘플링할 것이 없다. 대신 배경화면을 블러해서
+     카드 뒤에 위치를 맞춰 깐다 (WidgetFrame.css 의 .widget::before).
+     값이 없으면 none 이라 단색 표면으로 자연스럽게 폴백된다. */
+  --wallpaper: none;
+  --wallpaper-w: auto;
+  --wallpaper-h: auto;
+  --wallpaper-ox: 0px;
+  --wallpaper-oy: 0px;
+  --wallpaper-repeat: no-repeat;
+}
+
+/* --- 다크 팔레트 (기본) --- */
+:root,
+:root[data-palette="dark"] {
+  color-scheme: dark;
   --text: rgba(255, 255, 255, 0.92);
   --text-dim: rgba(255, 255, 255, 0.55);
   --border: rgba(255, 255, 255, 0.10);
-  --surface: rgba(24, 24, 30, 0.62);
-  --surface-strong: rgba(24, 24, 30, 0.88);
-  --danger: #ff6b6b;
+  --surface: rgba(24, 24, 30, var(--surface-alpha));
+  --surface-strong: rgba(24, 24, 30, min(1, calc(var(--surface-alpha) + 0.26)));
+  --menu-bg: #222;
+  /* 밝은 브랜드색(Spotify 초록 등) 위의 글자 — 팔레트와 무관하게 어둡다 */
+  --on-light: #111;
+  /* --text 를 배경으로 깔았을 때 그 위의 글자색 (재생 버튼 등) */
+  --on-text: #111;
+  /* 표면 위의 은은한 채움 — 버튼 배경, 호버, 선택 */
+  --fill: rgba(255, 255, 255, 0.08);
+  --fill-hover: rgba(255, 255, 255, 0.12);
+  --fill-active: rgba(255, 255, 255, 0.16);
+  /* 게이지·진행바의 빈 트랙 */
+  --track: rgba(255, 255, 255, 0.10);
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.25);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.40);
+  --scrim: rgba(0, 0, 0, 0.35);
   --ok: #58d68d;
   --warn: #f5b041;
-  --brand-spotify: #1ed760;
-  --on-light: #111;
-  --menu-bg: #222;
-  --font: "Segoe UI Variable", "Segoe UI", "Pretendard", system-ui, sans-serif;
-  --mono: "Cascadia Code", "Consolas", monospace;
+  --danger: #ff6b6b;
 }
+
+/* --- 라이트 팔레트 --- */
+/* 밝은 배경화면 위에서 읽히도록 글자를 어둡게, 표면을 밝게 뒤집는다.
+   상태색은 채도만 높으면 흰 표면에서 안 읽히므로 명도를 낮춘 값을 따로 쓴다. */
+:root[data-palette="light"] {
+  color-scheme: light;
+  --text: rgba(17, 17, 22, 0.92);
+  --text-dim: rgba(17, 17, 22, 0.55);
+  --border: rgba(0, 0, 0, 0.12);
+  --surface: rgba(250, 250, 252, var(--surface-alpha));
+  --surface-strong: rgba(250, 250, 252, min(1, calc(var(--surface-alpha) + 0.26)));
+  --menu-bg: #f5f5f7;
+  --on-light: #111;
+  --on-text: #fff;
+  --fill: rgba(0, 0, 0, 0.06);
+  --fill-hover: rgba(0, 0, 0, 0.10);
+  --fill-active: rgba(0, 0, 0, 0.14);
+  --track: rgba(0, 0, 0, 0.10);
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.14);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.22);
+  --scrim: rgba(0, 0, 0, 0.25);
+  --ok: #1e9e5a;
+  --warn: #b26a00;
+  --danger: #d13438;
+}
+
+/* --- 단색 모드: 표면의 투명도만 뺀다 --- */
 :root[data-theme-mode="solid"] {
   --surface: rgb(28, 28, 34);
   --surface-strong: rgb(36, 36, 44);
+}
+:root[data-palette="light"][data-theme-mode="solid"] {
+  --surface: rgb(248, 248, 250);
+  --surface-strong: rgb(255, 255, 255);
+}
+
+/* --- 카드 스타일 프리셋 --- */
+/* WidgetFrame.css 가 이 네 변수만 읽는다. */
+:root,
+:root[data-card-style="glass"] {
+  --card-bg: var(--surface);
+  --card-border: 1px solid var(--border);
+  --card-shadow: var(--shadow-card);
+  /* 상단 1px 하이라이트 — 반투명 표면에서 카드 경계가 살아난다 */
+  --card-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+:root[data-palette="light"][data-card-style="glass"] {
+  --card-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.60);
+}
+:root[data-card-style="minimal"] {
+  --card-bg: var(--surface);
+  --card-border: 1px solid var(--border);
+  --card-shadow: none;
+  --card-highlight: none;
+}
+:root[data-card-style="borderless"] {
+  --card-bg: var(--surface);
+  --card-border: 0;
+  --card-shadow: none;
+  --card-highlight: none;
+}
+/* 카드 없이 위젯 내용만 바탕화면 위에 — 글자는 그림자로 가독성을 확보한다 */
+:root[data-card-style="none"] {
+  --card-bg: transparent;
+  --card-border: 0;
+  --card-shadow: none;
+  --card-highlight: none;
 }
 
 * { box-sizing: border-box; }
@@ -29,10 +156,20 @@ html, body, #root {
   color: var(--text);
   font-family: var(--font);
   font-size: 14px;
+  /* 숫자 폭을 고정 — 초·사용률이 1초마다 좌우로 흔들리지 않는다 */
+  font-variant-numeric: tabular-nums;
   overflow: hidden;
   user-select: none;
 }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--fill-hover); border-radius: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

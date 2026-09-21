@@ -35,16 +35,34 @@ rand = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 walkdir = "2"
+# 여러 저장소 상태를 읽는다. 서브프로세스를 repo 마다 띄우는 것보다 훨씬 싸다.
+# vendored-openssl 등은 필요 없다 — 로컬 저장소만 읽고 네트워크는 쓰지 않는다.
+git2 = { version = "0.20", default-features = false }
 dirs = "6"
 uuid = { version = "1", features = ["v4"] }
 log = "0.4"
 env_logger = "0.11"
 url = "2"
 png = "0.17"
+# 배경화면은 대개 jpg 다 — png crate 만으로는 못 읽는다.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
-windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_UI_Input_KeyboardAndMouse"] }
+windows-sys = { version = "0.60", features = [
+  "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi",
+  "Win32_UI_Input_KeyboardAndMouse",
+  # PrintWindow 는 (역사적인 이유로) Storage::Xps 아래에 있다 — 바탕화면 캡처에 쓴다
+  "Win32_Storage_Xps",
+  # GetTickCount — 마지막 입력 이후 흐른 시간(자리 비움 판정)에 쓴다
+  "Win32_System_SystemInformation",
+  # DPAPI — 토큰을 현재 Windows 계정으로만 풀 수 있게 묶어 저장한다
+  "Win32_Security_Cryptography",
+  # 전경 창의 실행 파일 이름 — sysinfo 로 읽으면 틱마다 10ms 가 든다
+  "Win32_System_Threading",
+  # DWM cloaking — 가상 데스크톱/셸이 창을 "보이지만 가려진" 상태로 만들었는지 본다
+  "Win32_Graphics_Dwm",
+] }
 windows = { version = "0.58", features = [
   "Win32_UI_Shell",
   "Win32_System_Com",

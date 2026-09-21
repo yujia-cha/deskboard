@@ -1,0 +1,35 @@
+.pt { height: 100%; display: flex; flex-direction: column; gap: 6px; justify-content: center; font-size: var(--fs-label); }
+.pt-main { display: flex; align-items: center; gap: 12px; min-height: 0; }
+.pt-legend { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.pt-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; align-items: baseline; gap: 6px; font-size: var(--fs-meta); }
+.pt-dot { width: 8px; height: 8px; border-radius: 50%; align-self: center; }
+.pt-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pt-value { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pt-pct { white-space: nowrap; min-width: 30px; text-align: right; }
+
+.pt-sessions { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--border); padding-top: 4px; font-size: var(--fs-micro); }
+.pt-session { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; align-items: baseline; }
+.pt-session-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.pt-empty { height: 100%; display: flex; flex-direction: column; gap: 4px; justify-content: center; font-size: var(--fs-meta); }
+.pt-error { color: var(--danger); font-size: var(--fs-meta); }
+.pt-edit, .pt-empty .link, .pt-pick-head .link {
+  background: transparent; border: 0; color: var(--text-dim); padding: 0;
+  font-size: var(--fs-micro); text-decoration: underline; align-self: flex-start;
+}
+.pt-edit:hover, .pt-empty .link:hover, .pt-pick-head .link:hover { color: var(--accent); }
+
+/* 프로그램 등록 화면 */
+.pt-pick { height: 100%; display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-meta); overflow: auto; }
+.pt-pick-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: var(--fs-label); font-weight: var(--fw-title); }
+.pt-pick-group { display: flex; flex-direction: column; gap: 3px; }
+.pt-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.pt-chip {
+  background: var(--fill); border: 1px solid var(--border); color: var(--text);
+  border-radius: 999px; padding: 2px 8px; font-size: var(--fs-micro); white-space: nowrap;
+}
+.pt-chip:hover { background: var(--fill-hover); }
+/* 이미 등록된 것 — 누르면 빠진다 */
+.pt-chip.on { border-color: var(--accent); color: var(--accent); }
+.pt-chip.on:hover { border-color: var(--danger); color: var(--danger); }
+.pt-pick-note { font-size: var(--fs-micro); }

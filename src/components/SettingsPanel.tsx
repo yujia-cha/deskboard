@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { contentScale, useSettings } from "../core/settings";
+import { contentScale, useSettings, type CardStyle, type Palette, type ThemeMode } from "../core/settings";
 import { WIDGETS, widgetById } from "../widgets/registry";
 import type { SettingField } from "../widgets/types";
 import "./SettingsPanel.css";
@@ -13,6 +13,22 @@ function NumField({ value, min, onCommit }: { value: number; min: number; onComm
   const commit = () => { const n = Math.round(Number(text)); onCommit(Number.isFinite(n) ? Math.max(min, n) : value); };
   return <input type="number" min={min} step={8} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit}
     onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />;
+}
+
+/** 즉시 반영되는 슬라이더 — 값은 오른쪽에 숫자로 같이 보여준다. */
+function Slider({ label, value, min, max, step, suffix = "", title, onChange }: {
+  label: string; value: number; min: number; max: number; step: number;
+  suffix?: string; title?: string; onChange: (v: number) => void;
+}) {
+  return (
+    <label className="row" title={title}><span>{label}</span>
+      <span className="pair">
+        <input type="range" min={min} max={max} step={step} value={value}
+          onChange={(e) => onChange(Number(e.target.value))} />
+        <span className="dim slider-value">{value}{suffix}</span>
+      </span>
+    </label>
+  );
 }
 
 const SIZE_PRESETS = [{ label: "작게", k: 0.75 }, { label: "기본", k: 1 }, { label: "크게", k: 1.4 }, { label: "아주 크게", k: 1.8 }];
@@ -95,15 +111,48 @@ export function SettingsPanel() {
           <>
             <section>
               <h4>모양</h4>
-              <label className="row"><span>테마</span>
-                <select value={s.themeMode} onChange={(e) => s.setThemeMode(e.target.value as "solid" | "translucent")}>
-                  <option value="translucent">반투명 (Acrylic)</option>
+              <label className="row"><span>표면</span>
+                <select value={s.themeMode} onChange={(e) => s.setThemeMode(e.target.value as ThemeMode)}>
+                  <option value="translucent">반투명</option>
                   <option value="solid">단색</option>
+                </select>
+              </label>
+              <label className="row" title="밝은 배경화면에서는 라이트가 읽기 좋습니다"><span>팔레트</span>
+                <select value={s.palette} onChange={(e) => s.setPalette(e.target.value as Palette)}>
+                  <option value="dark">다크</option>
+                  <option value="light">라이트</option>
+                  <option value="auto">시스템 설정 따르기</option>
+                </select>
+              </label>
+              <label className="row"><span>카드 스타일</span>
+                <select value={s.cardStyle} onChange={(e) => s.setCardStyle(e.target.value as CardStyle)}>
+                  <option value="glass">글래스 (테두리 + 그림자)</option>
+                  <option value="minimal">미니멀 (테두리만)</option>
+                  <option value="borderless">보더리스 (배경만)</option>
+                  <option value="none">카드 없음 (내용만)</option>
                 </select>
               </label>
               <label className="row"><span>강조색</span>
                 <input type="color" value={s.accent} onChange={(e) => s.setAccent(e.target.value)} />
               </label>
+              <Slider label="카드 불투명도" value={s.surfaceOpacity} min={10} max={100} step={2}
+                suffix="%" onChange={s.setSurfaceOpacity} />
+              <Slider label="배경 블러 (실험적)" value={s.blurStrength} min={0} max={6} step={1}
+                title="카드 뒤에 배경화면을 블러해서 깝니다. 0 이면 단색 표면만 쓰고 캡처도 하지 않습니다."
+                suffix={s.blurStrength === 0 ? " (끔)" : ""} onChange={s.setBlurStrength} />
+              <Slider label="모서리 반경" value={s.cornerRadius} min={0} max={32} step={2}
+                suffix="px" onChange={s.setCornerRadius} />
+              <div className="dim" style={{ fontSize: "var(--fs-meta)" }}>
+                {s.blurStrength === 0
+                  ? "꺼져 있습니다 — 화면을 캡처하지 않습니다. 실시간 갱신은 아직 미완이라 기본은 꺼짐입니다."
+                  : s.wallpaperError
+                    ? `배경 블러: ${s.wallpaperError}`
+                    : s.wallpaperSource === "capture"
+                      ? "배경 블러: 화면 캡처 (라이브 배경화면 반영, 10초마다 스냅샷)"
+                      : s.wallpaperSource === "file"
+                        ? "배경 블러: 배경화면 파일 (30초마다)"
+                        : "배경 블러: 준비 중…"}
+              </div>
               <label className="row" title="위젯을 키우면 내용도 같은 비율로 확대 (넘치는 내용은 항상 자동 축소)"><span>크기에 맞춰 내용 확대</span>
                 <input type="checkbox" checked={s.autoScale} onChange={(e) => s.setAutoScale(e.target.checked)} />
               </label>

@@ -7,9 +7,40 @@
   color: var(--text); font-family: "Segoe UI Symbol", var(--font);
 }
 .dots-cell.emoji { font-family: "Segoe UI Emoji", var(--font); font-size: calc(var(--cell) * 0.82); }
+
 /* 블록 스타일: 켜진 셀을 둥근 사각형으로 */
 .dots-blocks .dots-cell { padding: calc(var(--gap) / 2); }
 .dots-blocks .dots-cell.on::before {
   content: ""; display: block; width: 100%; height: 100%;
   background: var(--block); border-radius: calc(var(--cell) * 0.12);
+}
+
+/*
+ * 도트 매트릭스: 문자 대신 진짜 원형 LED.
+ * 꺼진 셀도 아주 어둡게 그려야 전광판처럼 보인다 (비어 있으면 그냥 글자로 읽힌다).
+ */
+.dots-matrix .dots-cell { padding: calc(var(--gap) / 2); }
+.dots-matrix .dots-cell::before {
+  content: ""; display: block; width: 100%; height: 100%;
+  border-radius: 50%;
+  background: var(--track);
+}
+.dots-matrix .dots-cell.on::before { background: var(--block); }
+
+/*
+ * 네온: 켜진 셀에서 빛이 번진다. --glow 가 0 이면 글로우가 사라진다.
+ * 꺼진 셀은 켜진 색을 아주 흐리게 남겨 튜브가 꺼져 있는 느낌을 준다.
+ */
+.dots-neon .dots-cell { padding: calc(var(--gap) / 2); }
+.dots-neon .dots-cell::before {
+  content: ""; display: block; width: 100%; height: 100%;
+  border-radius: calc(var(--cell) * 0.18);
+  background: color-mix(in srgb, var(--block) 12%, transparent);
+}
+.dots-neon .dots-cell.on::before {
+  background: color-mix(in srgb, var(--block) 85%, white);
+  box-shadow:
+    0 0 calc(var(--cell) * 0.4 * var(--glow)) color-mix(in srgb, var(--block) 90%, transparent),
+    0 0 calc(var(--cell) * 1.1 * var(--glow)) color-mix(in srgb, var(--block) 55%, transparent),
+    0 0 calc(var(--cell) * 2.2 * var(--glow)) color-mix(in srgb, var(--block) 30%, transparent);
 }

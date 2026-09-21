@@ -2,6 +2,7 @@ import { useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettings } from "./core/settings";
 import { useEvent } from "./core/ipc";
+import { useWallpaper } from "./core/wallpaper";
 import { Canvas } from "./components/Canvas";
 import { SettingsPanel } from "./components/SettingsPanel";
 import "./core/theme.css";
@@ -14,11 +15,16 @@ export default function App() {
   const settingsOpen = useSettings((s) => s.settingsOpen);
   const instances = useSettings((s) => s.instances);
   const overlayRects = useSettings((s) => s.overlayRects);
+  const blurStrength = useSettings((s) => s.blurStrength);
+  const canvasMonitor = useSettings((s) => s.canvasMonitor);
   const setLocked = useSettings((s) => s.setLocked);
   const toggleTheme = useSettings((s) => s.toggleTheme);
   const openSettings = useSettings((s) => s.openSettings);
 
   useEffect(() => { load(); }, [load]);
+
+  // 카드 뒤에 깔 블러된 배경화면 (진짜 반투명)
+  useWallpaper(loaded ? blurStrength : 0, canvasMonitor);
 
   // 트레이 메뉴 → 프론트 상태
   useEvent("ui://toggle_lock", useCallback(() => setLocked(!useSettings.getState().locked), [setLocked]));

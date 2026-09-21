@@ -1,16 +1,16 @@
-.cu { height: 100%; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.cu { height: 100%; display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-label); }
 .cu-gauges { flex: 1 1 auto; min-height: 0; display: flex; justify-content: space-around; align-items: center; gap: 8px; }
 .cu-gauge { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .cu-gauge .gauge-label { white-space: nowrap; }
-.cu-reset { font-size: 10px; white-space: nowrap; }
-.cu-foot { display: flex; justify-content: space-between; align-items: center; font-size: 10px; }
+.cu-reset { font-size: var(--fs-micro); white-space: nowrap; }
+.cu-foot { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-micro); }
 .cu-foot button { background: transparent; border: 0; color: var(--text-dim); padding: 0 4px; border-radius: 6px; }
-.cu-foot button:hover { color: var(--text); background: rgba(255,255,255,.1); }
-.cu-error { color: var(--warn); font-size: 10px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cu-local { font-size: 11px; border-top: 1px solid var(--border); padding-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cu-login { height: 100%; display: flex; flex-direction: column; gap: 8px; justify-content: center; font-size: 12px; }
-.cu-login .primary { background: var(--accent); color: var(--text); border: 0; border-radius: 999px; padding: 6px 14px; align-self: flex-start; font-weight: 600; }
+.cu-foot button:hover { color: var(--text); background: var(--fill-hover); }
+.cu-error { color: var(--warn); font-size: var(--fs-micro); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cu-local { font-size: var(--fs-meta); border-top: 1px solid var(--border); padding-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cu-login { height: 100%; display: flex; flex-direction: column; gap: 8px; justify-content: center; font-size: var(--fs-label); }
+.cu-login .primary { background: var(--accent); color: var(--text); border: 0; border-radius: 999px; padding: 6px 14px; align-self: flex-start; font-weight: var(--fw-title); }
 .cu-login .primary:disabled { opacity: .5; }
-.cu-login .link { background: transparent; border: 0; color: var(--text-dim); text-align: left; padding: 0; font-size: 11px; text-decoration: underline; }
+.cu-login .link { background: transparent; border: 0; color: var(--text-dim); text-align: left; padding: 0; font-size: var(--fs-meta); text-decoration: underline; }
 .cu-login-row { display: flex; gap: 6px; }
-.cu-login-row input { flex: 1; min-width: 0; background: rgba(255,255,255,.08); border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; }
+.cu-login-row input { flex: 1; min-width: 0; background: var(--fill); border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; }

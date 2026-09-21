@@ -9,6 +9,11 @@ import { claudeUsageWidget } from "./claude-usage";
 import { calendarWidget } from "./calendar";
 import { spotifyWidget } from "./spotify";
 import { folderWidget } from "./folder";
+import { weatherWidget } from "./weather";
+import { notesWidget } from "./notes";
+import { playtimeWidget } from "./playtime";
+import { gitStatusWidget } from "./gitstatus";
+import { githubWidget } from "./github";
 import { settingsWidget } from "./settings";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -20,6 +25,11 @@ export const WIDGETS: WidgetDefinition<any>[] = [
   calendarWidget,
   spotifyWidget,
   folderWidget,
+  weatherWidget,
+  notesWidget,
+  playtimeWidget,
+  gitStatusWidget,
+  githubWidget,
 ];
 
 export const widgetById = (id: string) => WIDGETS.find((w) => w.id === id);

@@ -3,6 +3,6 @@
 .edit-bar {
   position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%);
   background: var(--surface-strong); border: 1px solid var(--border); border-radius: 999px;
-  padding: 6px 14px; font-size: 12px; color: var(--text-dim); display: flex; gap: 10px; align-items: center; z-index: 50;
+  padding: 6px 14px; font-size: var(--fs-label); color: var(--text-dim); display: flex; gap: 10px; align-items: center; z-index: 50;
 }
-.edit-bar button { background: rgba(255,255,255,.08); border: 0; border-radius: 999px; padding: 3px 10px; color: var(--text); }
+.edit-bar button { background: var(--fill); border: 0; border-radius: 999px; padding: 3px 10px; color: var(--text); }

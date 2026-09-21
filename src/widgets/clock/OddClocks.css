@@ -1,0 +1,48 @@
+/*
+ * 바이너리 시계 — 자리마다 세로 한 줄, 아래가 1의 자리.
+ * 열마다 비트 수가 다르므로(시 십의자리는 2비트) 반드시 아래를 맞춰야 한다 —
+ * 가운데 정렬하면 각 열의 1의 자리가 다른 높이에 놓여 읽을 수 없다.
+ */
+/* 바깥은 카드 안에서 가운데, 안쪽 열들끼리는 아래를 맞춘다 */
+.binclock { height: 100%; display: flex; align-items: center; justify-content: center; }
+.binclock-group { display: flex; align-items: flex-end; gap: var(--pitch); }
+.binclock-col { display: flex; flex-direction: column-reverse; gap: calc(var(--pitch) * 0.5); }
+.binclock-cell {
+  width: var(--dot); height: var(--dot); border-radius: 50%;
+  background: var(--track);
+  transition: background var(--dur-fast) var(--ease);
+}
+.binclock-cell.on { background: var(--lit, var(--accent)); }
+/* 시/분/초를 밝기로 구분한다 — 색을 세 개 쓰면 강조색 설정과 싸운다 */
+.binclock-col[data-unit="m"] .binclock-cell.on { opacity: .8; }
+.binclock-col[data-unit="s"] .binclock-cell.on { opacity: .55; }
+
+/*
+ * 피보나치 시계 — 1,1,2,3,5 정사각형이 8×5 피보나치 직사각형을 이룬다.
+ *   +---------+------+
+ *   |         |  3x3 |
+ *   |   5x5   +--+---+
+ *   |         |2x|1|1|  (1 둘은 세로로)
+ *   +---------+--+---+
+ */
+.fibclock { height: 100%; display: flex; align-items: center; justify-content: center; }
+.fibclock-grid {
+  display: grid;
+  grid-template-columns: repeat(8, var(--u));
+  grid-template-rows: repeat(5, var(--u));
+  gap: 2px;
+}
+.fib-5  { grid-area: 1 / 1 / 6 / 6; }
+.fib-3  { grid-area: 1 / 6 / 4 / 9; }
+.fib-2  { grid-area: 4 / 6 / 6 / 8; }
+.fib-1a { grid-area: 4 / 8 / 5 / 9; }
+.fib-1b { grid-area: 5 / 8 / 6 / 9; }
+.fibclock-cell {
+  border-radius: 3px;
+  background: var(--fill);
+  transition: background var(--dur) var(--ease);
+}
+/* 시 = 강조색, 분 = ok, 둘 다 = warn. 꺼짐은 표면 채움색. */
+.fibclock-cell[data-role="hour"]   { background: var(--lit, var(--accent)); }
+.fibclock-cell[data-role="minute"] { background: var(--ok); }
+.fibclock-cell[data-role="both"]   { background: var(--warn); }

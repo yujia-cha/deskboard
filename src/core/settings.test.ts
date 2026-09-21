@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultInstances, findFreeSlot, overlaps } from "./settings";
+import { defaultInstances, findFreeSlot, overlaps, resolvePalette } from "./settings";
 
 describe("layout", () => {
   it("default widgets do not overlap", () => {
@@ -17,5 +17,22 @@ describe("layout", () => {
 
   it("findFreeSlot falls back when nothing fits", () => {
     expect(findFreeSlot([{ x: 0, y: 0, w: 5000, h: 5000 }], 300, 200, { w: 1920, h: 1040 })).toEqual({ x: 24, y: 24 });
+  });
+});
+
+describe("palette", () => {
+  it("passes explicit choices through", () => {
+    expect(resolvePalette("dark", false)).toBe("dark");
+    expect(resolvePalette("light", true)).toBe("light");
+  });
+
+  it('resolves "auto" from the OS preference', () => {
+    expect(resolvePalette("auto", true)).toBe("dark");
+    expect(resolvePalette("auto", false)).toBe("light");
+  });
+
+  it("defaults to dark when the OS preference is unreadable", () => {
+    // matchMedia 가 없는 환경에서 호출하면 다크로 떨어진다
+    expect(resolvePalette("auto")).toBe("dark");
   });
 });

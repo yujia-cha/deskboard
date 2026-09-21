@@ -7,12 +7,19 @@
 //! 2. 아래 `all()` 에 인스턴스를 추가한다.
 //! 3. 커맨드를 `lib.rs` 의 `generate_handler!` 에 등록한다.
 
+pub mod activity;
 pub mod calendar;
 pub mod claude_usage;
 pub mod folders;
+pub mod git;
+pub mod github;
+pub mod notes;
 pub mod oauth;
+pub mod secrets;
 pub mod spotify;
 pub mod sysmon;
+pub mod wallpaper;
+pub mod weather;
 
 use tauri::AppHandle;
 
@@ -30,5 +37,11 @@ pub fn all() -> Vec<Box<dyn Provider>> {
         Box::new(calendar::CalendarProvider),
         Box::new(spotify::SpotifyProvider),
         Box::new(folders::FoldersProvider),
+        Box::new(wallpaper::WallpaperProvider),
+        Box::new(weather::WeatherProvider),
+        Box::new(notes::NotesProvider),
+        Box::new(activity::ActivityProvider),
+        Box::new(git::GitProvider),
+        Box::new(github::GithubProvider),
     ]
 }

@@ -1,0 +1,35 @@
+.wx { height: 100%; display: flex; flex-direction: column; gap: 8px; justify-content: center; }
+.wx-now { display: flex; align-items: center; gap: 10px; }
+.wx-icon { font-size: 34px; line-height: 1; flex: 0 0 auto; }
+.wx-temps { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.wx-temp { font-size: var(--fs-value); font-weight: var(--fw-value); line-height: var(--lh-tight); }
+.wx-text { font-size: var(--fs-label); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wx-feels { font-size: var(--fs-meta); }
+.wx-range { display: flex; flex-direction: column; align-items: flex-end; font-size: var(--fs-meta); flex: 0 0 auto; }
+.wx-hi { color: var(--warn); }
+.wx-lo { color: var(--accent); }
+.wx-pop { white-space: nowrap; }
+
+.wx-hours { display: flex; gap: 2px; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 6px; }
+.wx-hour { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; flex: 1 1 0; }
+.wx-hour-time { font-size: var(--fs-micro); white-space: nowrap; }
+.wx-hour-temp { font-size: var(--fs-meta); }
+.wx-hour-pop { font-size: var(--fs-micro); white-space: nowrap; }
+.wx-hour-pop.on { color: var(--accent); }
+
+.wx-setup { height: 100%; display: flex; flex-direction: column; gap: 6px; justify-content: center; font-size: var(--fs-label); }
+.wx-setup-title { font-weight: var(--fw-title); }
+.wx-setup p { margin: 0; }
+.wx-setup button { background: var(--fill); border: 1px solid var(--border); color: var(--text); border-radius: 999px; padding: 4px 12px; align-self: flex-start; }
+.wx-error { color: var(--warn); font-size: var(--fs-meta); }
+
+/* 도시 검색 */
+.wx-picker { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.wx-picker-row { display: flex; gap: 6px; }
+.wx-picker-row input { flex: 1; min-width: 0; background: var(--fill); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; }
+.wx-picker-row button { background: var(--fill-hover); border: 0; color: var(--text); border-radius: 999px; padding: 4px 12px; }
+.wx-picker-row button:disabled { opacity: .5; cursor: default; }
+.wx-picker-hits { display: flex; flex-direction: column; gap: 2px; max-height: 120px; overflow: auto; }
+.wx-picker-hits button { background: transparent; border: 0; color: var(--text); text-align: left; padding: 4px 6px; border-radius: 6px; font-size: var(--fs-meta); }
+.wx-picker-hits button:hover { background: var(--fill); }
+.wx-change { background: transparent; border: 0; color: var(--text-dim); text-align: left; padding: 0; font-size: var(--fs-micro); text-decoration: underline; }

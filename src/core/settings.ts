@@ -7,6 +7,10 @@ import { WIDGETS, widgetById } from "../widgets/registry";
 import { defaultsOf, type WidgetSettings } from "../widgets/types";
 
 export type ThemeMode = "translucent" | "solid";
+/** 글자·표면 색 계열. "auto" 는 OS 테마를 따라간다. */
+export type Palette = "dark" | "light" | "auto";
+/** 카드의 테두리·그림자 프리셋. */
+export type CardStyle = "glass" | "minimal" | "borderless" | "none";
 
 export interface WidgetInstance {
   id: string;        // 인스턴스 id (uuid)
@@ -19,6 +23,17 @@ export interface WidgetInstance {
 
 interface Persisted {
   themeMode: ThemeMode;
+  palette: Palette;
+  cardStyle: CardStyle;
+  /** 카드 표면의 불투명도 0~100. 낮출수록 뒤의 블러된 배경화면이 비친다. */
+  surfaceOpacity: number;
+  /**
+   * 배경화면 블러 패스 수 1~6. **0 = 끔(기본값)** — 카드는 단색/반투명 표면만 쓴다.
+   * 켜면 화면을 주기적으로 캡처하므로 공짜가 아니다. 끄면 백엔드 캡처 루프도 멈춘다.
+   */
+  blurStrength: number;
+  /** 카드 모서리 반경 px. */
+  cornerRadius: number;
   accent: string;
   gridSnap: number;
   /** 위젯 내용을 크기에 맞춰 확대/축소 */
@@ -37,10 +52,18 @@ interface State extends Persisted {
   selected: string | null;   // 설정 패널에서 보는 인스턴스
   /** 위젯 사각형 밖으로 펼쳐지는 팝업(폴더 등)의 히트 영역. 저장 안 함. */
   overlayRects: Record<string, Rect>;
+  /** 배경화면을 어디서 얻었는지 — 설정 패널에 보여준다. 저장 안 함. */
+  wallpaperSource: string | null;
+  wallpaperError: string | null;
 
   load(): Promise<void>;
   setThemeMode(m: ThemeMode): void;
   toggleTheme(): void;
+  setPalette(p: Palette): void;
+  setCardStyle(c: CardStyle): void;
+  setSurfaceOpacity(v: number): void;
+  setBlurStrength(v: number): void;
+  setCornerRadius(v: number): void;
   setAccent(c: string): void;
   setAutoScale(v: boolean): void;
   setCanvasMonitor(name: string | null): void;
@@ -55,14 +78,51 @@ interface State extends Persisted {
   updateWidgetSettings(instanceId: string, patch: WidgetSettings): void;
   setInstanceAccent(instanceId: string, accent: string | null): void;
   setOverlayRect(id: string, rect: Rect | null): void;
+  setWallpaperStatus(source: string | null, error: string | null): void;
 }
 
 const store = new LazyStore("settings.json");
 const KEY = "v1";
 
-function applyTheme(mode: ThemeMode, accent: string) {
-  document.documentElement.dataset.themeMode = mode;
-  document.documentElement.style.setProperty("--accent", accent);
+const prefersDark = () =>
+  typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia("(prefers-color-scheme: dark)")
+    : null;
+
+/**
+ * "auto" 를 실제 팔레트로 푼다.
+ * `systemPrefersDark` 는 테스트에서 주입한다 — 생략하면 OS 설정을 읽고,
+ * matchMedia 가 없는 환경(SSR·테스트)에서는 다크로 본다.
+ */
+export const resolvePalette = (
+  p: Palette,
+  systemPrefersDark: boolean = prefersDark()?.matches !== false,
+): "dark" | "light" => (p === "auto" ? (systemPrefersDark ? "dark" : "light") : p);
+
+type ThemeBits = Pick<
+  Persisted,
+  "themeMode" | "palette" | "cardStyle" | "accent" | "surfaceOpacity" | "cornerRadius"
+>;
+
+function applyTheme(s: ThemeBits) {
+  const d = document.documentElement;
+  d.dataset.themeMode = s.themeMode;
+  d.dataset.palette = resolvePalette(s.palette);
+  d.dataset.cardStyle = s.cardStyle;
+  d.style.setProperty("--accent", s.accent);
+  d.style.setProperty("--surface-alpha", String(clamp(s.surfaceOpacity, 0, 100) / 100));
+  d.style.setProperty("--radius", `${clamp(s.cornerRadius, 0, 40)}px`);
+}
+
+const clamp = (v: number, lo: number, hi: number) =>
+  Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : lo;
+
+// palette 가 "auto" 일 때 OS 테마 변경을 따라간다.
+if (typeof window !== "undefined") {
+  prefersDark()?.addEventListener("change", () => {
+    const s = useSettings.getState();
+    if (s.loaded && s.palette === "auto") applyTheme(s);
+  });
 }
 
 let saveTimer: number | undefined;
@@ -72,7 +132,9 @@ async function flush() {
   const s = pending();
   pending = null;
   const data: Persisted = {
-    themeMode: s.themeMode, accent: s.accent, gridSnap: s.gridSnap, autoScale: s.autoScale,
+    themeMode: s.themeMode, palette: s.palette, cardStyle: s.cardStyle,
+    surfaceOpacity: s.surfaceOpacity, blurStrength: s.blurStrength, cornerRadius: s.cornerRadius,
+    accent: s.accent, gridSnap: s.gridSnap, autoScale: s.autoScale,
     canvasMonitor: s.canvasMonitor, autostart: s.autostart, instances: s.instances,
   };
   await store.set(KEY, data);
@@ -154,6 +216,11 @@ export function defaultInstances(): WidgetInstance[] {
 
 export const useSettings = create<State>((set, get) => ({
   themeMode: "translucent",
+  palette: "dark",
+  cardStyle: "glass",
+  surfaceOpacity: 62,
+  blurStrength: 0,
+  cornerRadius: 16,
   accent: "#7c9cff",
   gridSnap: 8,
   autoScale: true,
@@ -165,11 +232,15 @@ export const useSettings = create<State>((set, get) => ({
   settingsOpen: false,
   selected: null,
   overlayRects: {},
+  wallpaperSource: null,
+  wallpaperError: null,
 
   async load() {
     const saved = await store.get<Partial<Persisted>>(KEY);
     const s: Persisted = {
-      themeMode: "translucent", accent: "#7c9cff", gridSnap: 8, autoScale: true, canvasMonitor: null, autostart: true,
+      themeMode: "translucent", palette: "dark", cardStyle: "glass",
+      surfaceOpacity: 62, blurStrength: 0, cornerRadius: 16,
+      accent: "#7c9cff", gridSnap: 8, autoScale: true, canvasMonitor: null, autostart: true,
       ...saved,
       instances: saved?.instances ?? defaultInstances(),
     };
@@ -180,15 +251,20 @@ export const useSettings = create<State>((set, get) => ({
     const singletoned = ensureSingletons(known);
     s.instances = normalizeSettingsSize(singletoned);
     set({ ...s, loaded: true });
-    applyTheme(s.themeMode, s.accent);
+    applyTheme(s);
     invoke("set_canvas_monitor", { name: s.canvasMonitor }).catch(console.warn);
     // 자동 시작 등록은 백엔드(autostart.rs::sync)가 시작 시 `autostart` 값에 맞춰 처리한다.
     const resized = s.instances.some((i, idx) => i.w !== singletoned[idx].w || i.h !== singletoned[idx].h);
     if (!saved || s.instances.length !== known.length || resized) persist(get);
   },
-  setThemeMode(themeMode) { set({ themeMode }); applyTheme(themeMode, get().accent); persist(get); },
+  setThemeMode(themeMode) { set({ themeMode }); applyTheme(get()); persist(get); },
   toggleTheme() { get().setThemeMode(get().themeMode === "solid" ? "translucent" : "solid"); },
-  setAccent(accent) { set({ accent }); applyTheme(get().themeMode, accent); persist(get); },
+  setPalette(palette) { set({ palette }); applyTheme(get()); persist(get); },
+  setCardStyle(cardStyle) { set({ cardStyle }); applyTheme(get()); persist(get); },
+  setSurfaceOpacity(surfaceOpacity) { set({ surfaceOpacity }); applyTheme(get()); persist(get); },
+  setBlurStrength(blurStrength) { set({ blurStrength }); persist(get); },
+  setCornerRadius(cornerRadius) { set({ cornerRadius }); applyTheme(get()); persist(get); },
+  setAccent(accent) { set({ accent }); applyTheme(get()); persist(get); },
   setAutoScale(autoScale) { set({ autoScale }); persist(get); },
   setCanvasMonitor(canvasMonitor) {
     set({ canvasMonitor });
@@ -242,6 +318,7 @@ export const useSettings = create<State>((set, get) => ({
     });
     persist(get);
   },
+  setWallpaperStatus(wallpaperSource, wallpaperError) { set({ wallpaperSource, wallpaperError }); },
   setOverlayRect(id, rect) {
     const next = { ...get().overlayRects };
     if (rect) next[id] = rect; else delete next[id];

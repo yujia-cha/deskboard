@@ -1,27 +1,27 @@
-.cal { height: 100%; display: flex; flex-direction: column; gap: 6px; font-size: 12px; position: relative; }
+.cal { height: 100%; display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-label); position: relative; }
 .cal-nav { display: flex; align-items: center; justify-content: space-between; }
-.cal-nav button { background: transparent; border: 0; color: var(--text-dim); padding: 2px 8px; border-radius: 6px; font-size: 14px; }
-.cal-nav button:hover { background: rgba(255,255,255,.1); color: var(--text); }
-.cal-nav .cal-month { font-weight: 600; color: var(--text); font-size: 13px; }
+.cal-nav button { background: transparent; border: 0; color: var(--text-dim); padding: 2px 8px; border-radius: 6px; font-size: var(--fs-title); }
+.cal-nav button:hover { background: var(--fill-hover); color: var(--text); }
+.cal-nav .cal-month { font-weight: var(--fw-title); color: var(--text); font-size: var(--fs-sub); }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; flex: 0 0 auto; }
-.cal-dow { text-align: center; color: var(--text-dim); font-size: 10px; padding-bottom: 2px; }
+.cal-dow { text-align: center; color: var(--text-dim); font-size: var(--fs-micro); padding-bottom: 2px; }
 .cal-day {
   background: transparent; border: 0; border-radius: 8px; padding: 2px 0 1px; min-height: 26px;
   display: flex; flex-direction: column; align-items: center; gap: 1px; color: var(--text); line-height: 1.2;
 }
-.cal-day:hover { background: rgba(255,255,255,.08); }
+.cal-day:hover { background: var(--fill); }
 .cal-day.other { color: var(--text-dim); opacity: .5; }
-.cal-day.today .cal-num { color: var(--accent); font-weight: 700; }
-.cal-day.selected { background: rgba(255,255,255,.14); }
+.cal-day.today .cal-num { color: var(--accent); font-weight: var(--fw-bold); }
+.cal-day.selected { background: var(--fill-hover); }
 .sun { color: var(--danger); } .sat { color: var(--accent); }
 .cal-day.sun .cal-num { color: var(--danger); } .cal-day.sat .cal-num { color: var(--accent); }
 .cal-dots { display: flex; gap: 2px; height: 4px; }
 .cal-dots i { width: 4px; height: 4px; border-radius: 2px; display: block; }
 .cal-list { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--border); padding-top: 6px; }
 .cal-list-head { display: flex; justify-content: space-between; align-items: center; color: var(--text-dim); }
-.cal-list-head button { background: rgba(255,255,255,.08); border: 0; color: var(--text); border-radius: 999px; padding: 2px 8px; font-size: 11px; }
+.cal-list-head button { background: var(--fill); border: 0; color: var(--text); border-radius: 999px; padding: 2px 8px; font-size: var(--fs-meta); }
 .cal-ev { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 6px; cursor: pointer; }
-.cal-ev:hover { background: rgba(255,255,255,.08); }
+.cal-ev:hover { background: var(--fill); }
 .cal-ev i { width: 6px; height: 6px; border-radius: 3px; flex: 0 0 auto; }
 .cal-ev-time { color: var(--text-dim); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
 .cal-ev-title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -32,13 +32,13 @@
   display: flex; flex-direction: column; gap: 6px; z-index: 5; overflow: auto;
 }
 .cal-editor input[type=text], .cal-editor input:not([type]), .cal-editor input[type=date], .cal-editor input[type=datetime-local], .cal-editor textarea {
-  background: rgba(255,255,255,.08); border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; width: 100%; color-scheme: dark;
+  background: var(--fill); border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; width: 100%;
 }
 .cal-editor textarea { resize: none; }
 .cal-row { display: flex; align-items: center; gap: 6px; }
 .cal-colors button { width: 18px; height: 18px; border-radius: 9px; border: 2px solid transparent; }
 .cal-colors button.on { border-color: var(--text); }
-.cal-actions button { background: rgba(255,255,255,.08); border: 0; color: var(--text); border-radius: 8px; padding: 4px 12px; }
+.cal-actions button { background: var(--fill); border: 0; color: var(--text); border-radius: 8px; padding: 4px 12px; }
 .cal-actions .primary { background: var(--accent); color: var(--text); }
 .cal-actions .danger { color: var(--danger); }
-.cal-error { color: var(--danger); font-size: 11px; }
+.cal-error { color: var(--danger); font-size: var(--fs-meta); }

@@ -5,7 +5,11 @@
 
 mod host;
 mod lhm;
+mod net;
 mod nvidia;
+// 커맨드가 이 안에 있다 — `#[tauri::command]` 가 만드는 보조 아이템은 재수출로 따라오지
+// 않으므로 모듈째 공개하고 `providers::sysmon::proc::sysmon_set_detail` 로 등록한다.
+pub mod proc;
 
 use super::Provider;
 use serde::Serialize;
@@ -32,6 +36,23 @@ pub struct DiskSample {
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
+pub struct NetSample {
+    /// 가장 바쁜 인터페이스 이름 (툴팁용)
+    pub iface: String,
+    pub up_bps: u64,
+    pub down_bps: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct ProcSample {
+    pub name: String,
+    /// 전체 CPU 대비 % (코어 합산이 아니다)
+    pub cpu: f32,
+    /// 사용 중인 메모리 바이트
+    pub mem: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
 pub struct SensorSample {
     pub cpu_name: String,
     pub cpu_usage: f32,
@@ -43,6 +64,9 @@ pub struct SensorSample {
     pub mem_total: u64,
     pub gpu: Option<GpuSample>,
     pub disks: Vec<DiskSample>,
+    pub net: Option<NetSample>,
+    /// CPU 상위 프로세스. 위젯이 요청할 때만 채워진다 (`sysmon_set_detail`).
+    pub top: Vec<ProcSample>,
 }
 
 /// 센서 소스 하나. `sample` 은 자기 필드만 채운다.
@@ -69,6 +93,8 @@ impl Provider for SysmonProvider {
 fn run(app: AppHandle) {
     let mut sources: Vec<Box<dyn SensorSource>> = vec![
         Box::new(host::HostSource::new()),
+        Box::new(net::NetSource::new()),
+        Box::new(proc::ProcSource::new()),
         Box::new(nvidia::NvidiaSmiSource::new()),
         Box::new(lhm::LhmSource::new()),
     ];

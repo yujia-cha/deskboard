@@ -1,4 +1,4 @@
-.settings-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 100; display: flex; align-items: center; justify-content: center; }
+.settings-backdrop { position: fixed; inset: 0; background: var(--scrim); z-index: 100; display: flex; align-items: center; justify-content: center; }
 .settings {
   width: min(420px, 90vw); max-height: 85vh; overflow: auto;
   background: var(--surface-strong);
@@ -8,23 +8,25 @@
 .settings header { display: flex; justify-content: space-between; align-items: center; }
 .settings header button, .settings .link { background: transparent; border: 0; color: var(--text-dim); text-align: left; padding: 4px 0; }
 .settings header button:hover, .settings .link:hover { color: var(--text); }
-.settings h4 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
+.settings h4 { margin: 0 0 8px; font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
 .settings section { display: flex; flex-direction: column; gap: 8px; }
 .settings .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .settings input[type=text], .settings input[type=number], .settings select {
-  background: rgba(255,255,255,.08); border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; min-width: 160px;
+  background: var(--fill); border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; min-width: 160px;
 }
 .settings select option { background: var(--menu-bg); }
 .settings .widget-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .settings .widget-list button, .settings .danger {
-  background: rgba(255,255,255,.08); border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px;
+  background: var(--fill); border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px;
 }
 .settings .widget-list button:hover { border-color: var(--accent); }
 .settings .danger { color: var(--danger); align-self: flex-start; margin-top: 8px; }
-.dim { color: var(--text-dim); font-size: 12px; }
+.dim { color: var(--text-dim); font-size: var(--fs-label); }
 .settings .preset-row { display: flex; gap: 4px; }
-.settings .preset-row button { background: rgba(255,255,255,.08); border: 1px solid var(--border); border-radius: 8px; padding: 3px 8px; font-size: 11px; }
+.settings .preset-row button { background: var(--fill); border: 1px solid var(--border); border-radius: 8px; padding: 3px 8px; font-size: var(--fs-meta); }
 .settings .preset-row button:hover { border-color: var(--accent); }
 .settings .pair { display: inline-flex; align-items: center; gap: 4px; }
 .settings .pair input[type=number] { min-width: 70px; width: 70px; }
 .settings header span { display: inline-flex; gap: 6px; }
+.settings input[type="range"] { flex: 1; min-width: 90px; accent-color: var(--accent); }
+.settings .slider-value { min-width: 42px; text-align: right; white-space: nowrap; }

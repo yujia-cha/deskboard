@@ -85,7 +85,12 @@ export function WidgetFrame({ inst, children }: { inst: WidgetInstance; children
   return (
     <div
       className={`widget ${locked ? "" : "editing"}`}
-      style={{ left: inst.x, top: inst.y, width: inst.w, height: inst.h, ...(inst.accent ? { "--accent": inst.accent } as CSSProperties : {}) }}
+      style={{
+        left: inst.x, top: inst.y, width: inst.w, height: inst.h,
+        // 카드 뒤 배경화면을 정렬하는 데 쓴다 (WidgetFrame.css 의 .widget::before)
+        "--wx": `${inst.x}px`, "--wy": `${inst.y}px`,
+        ...(inst.accent ? { "--accent": inst.accent } : {}),
+      } as CSSProperties}
       onPointerDown={(e) => e.stopPropagation()}
     >
       {/* 제목줄은 없다. 편집 모드에서만 이동 핸들 + 설정/제거를 내용 위에 겹쳐 그린다. 평소 설정은 설정 위젯에서. */}

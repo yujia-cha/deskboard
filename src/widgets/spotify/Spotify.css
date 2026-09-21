@@ -1,31 +1,31 @@
-.sp { height: 100%; display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+.sp { height: 100%; display: flex; flex-direction: column; gap: 8px; font-size: var(--fs-label); }
 .sp-now { display: flex; gap: 12px; align-items: stretch; flex: 0 0 auto; }
-.sp-art { flex: 0 0 auto; border-radius: 10px; overflow: hidden; background: rgba(255,255,255,.08); display: flex; align-items: center; justify-content: center; font-size: 24px; color: var(--text-dim); }
+.sp-art { flex: 0 0 auto; border-radius: 10px; overflow: hidden; background: var(--fill); display: flex; align-items: center; justify-content: center; font-size: 24px; color: var(--text-dim); }
 .sp-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .sp-info { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 4px; }
-.sp-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-title { font-size: var(--fs-title); font-weight: var(--fw-title); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sp-artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sp-bar { height: 4px; border-radius: 2px; background: rgba(255,255,255,.12); overflow: hidden; }
+.sp-bar { height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
 .sp-bar > span { display: block; height: 100%; background: var(--brand-spotify); transition: width 1s linear; }
-.sp-times { display: flex; justify-content: space-between; font-size: 10px; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.sp-times { display: flex; justify-content: space-between; font-size: var(--fs-micro); font-variant-numeric: tabular-nums; margin-top: 2px; }
 .sp-controls { display: flex; align-items: center; gap: 4px; }
-.sp-controls button { background: transparent; border: 0; color: var(--text); border-radius: 50%; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
-.sp-controls button:hover { background: rgba(255,255,255,.12); }
-.sp-controls .sp-play { background: var(--text); color: var(--on-light); width: 30px; height: 30px; }
-.sp-controls .sp-icon { color: var(--text-dim); font-size: 12px; }
-.sp-error { color: var(--danger); font-size: 11px; }
+.sp-controls button { background: transparent; border: 0; color: var(--text); border-radius: 50%; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-sub); }
+.sp-controls button:hover { background: var(--fill-hover); }
+.sp-controls .sp-play { background: var(--text); color: var(--on-text); width: 30px; height: 30px; }
+.sp-controls .sp-icon { color: var(--text-dim); font-size: var(--fs-label); }
+.sp-error { color: var(--danger); font-size: var(--fs-meta); }
 .sp-lists { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--border); padding-top: 6px; }
 .sp-list { display: flex; align-items: center; gap: 8px; background: transparent; border: 0; color: var(--text); text-align: left; padding: 4px 6px; border-radius: 8px; }
-.sp-list:hover { background: rgba(255,255,255,.08); }
+.sp-list:hover { background: var(--fill); }
 .sp-list.on { background: color-mix(in srgb, var(--brand-spotify) 15%, transparent); }
-.sp-list img, .sp-list-ph { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; flex: 0 0 auto; background: rgba(255,255,255,.08); display: inline-flex; align-items: center; justify-content: center; color: var(--text-dim); }
+.sp-list img, .sp-list-ph { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; flex: 0 0 auto; background: var(--fill); display: inline-flex; align-items: center; justify-content: center; color: var(--text-dim); }
 .sp-list-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sp-login { display: flex; flex-direction: column; gap: 8px; font-size: 12px; height: 100%; overflow: auto; }
-.sp-login-title { font-weight: 600; font-size: 14px; color: var(--brand-spotify); }
+.sp-login { display: flex; flex-direction: column; gap: 8px; font-size: var(--fs-label); height: 100%; overflow: auto; }
+.sp-login-title { font-weight: var(--fw-title); font-size: var(--fs-title); color: var(--brand-spotify); }
 .sp-login a { color: var(--accent); cursor: pointer; text-decoration: underline; }
-.sp-login code { font-family: var(--mono); font-size: 11px; user-select: text; }
-.sp-login input { background: rgba(255,255,255,.08); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; width: 100%; }
-.sp-login button { background: rgba(255,255,255,.1); border: 0; color: var(--text); border-radius: 999px; padding: 6px 14px; align-self: flex-start; }
-.sp-login button.primary { background: var(--brand-spotify); color: var(--on-light); font-weight: 600; }
+.sp-login code { font-family: var(--mono); font-size: var(--fs-meta); user-select: text; }
+.sp-login input { background: var(--fill); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; width: 100%; }
+.sp-login button { background: var(--fill-hover); border: 0; color: var(--text); border-radius: 999px; padding: 6px 14px; align-self: flex-start; }
+.sp-login button.primary { background: var(--brand-spotify); color: var(--on-light); font-weight: var(--fw-title); }
 .sp-login button:disabled { opacity: .5; cursor: default; }
 .sp-login-row { display: flex; align-items: center; gap: 10px; }

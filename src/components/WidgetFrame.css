@@ -1,31 +1,69 @@
+/* 카드의 배경·테두리·그림자는 theme.css 의 카드 스타일 프리셋이 결정한다. */
 .widget {
   position: absolute;
   display: flex; flex-direction: column;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: transparent;   /* 실제 표면은 ::after 가 그린다 (::before 의 배경화면 위) */
+  border: var(--card-border);
   border-radius: var(--radius);
-  box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  box-shadow: var(--card-shadow), var(--card-highlight);
   overflow: hidden;
-  transition: box-shadow .15s;
+  transition: box-shadow var(--dur-fast) var(--ease);
+  animation: widget-in var(--dur) var(--ease);
 }
-.widget.editing { box-shadow: 0 0 0 2px var(--accent), 0 8px 24px rgba(0,0,0,.3); }
+@keyframes widget-in {
+  from { opacity: 0; transform: scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+/*
+ * 진짜 반투명 — 블러된 배경화면을 카드 위치에 맞춰 깐다.
+ * 창이 작업영역 전체를 덮고 바탕화면 바로 위에 있으므로 좌표가 정확히 맞는다.
+ *
+ * --wallpaper-ox/oy = 배경화면 이미지의 원점이 창 좌표 어디에 있는가 (백엔드가 계산).
+ * --wx/--wy         = 이 카드의 창 안 좌표.
+ * background-position 은 "이미지 원점을 요소 원점 기준 어디에 둘지"이므로 그 차이다.
+ * 부호를 뒤집으면 오프셋의 2배만큼 어긋난다.
+ *
+ * --wallpaper 가 none 이면 이 레이어는 보이지 않고 단색 --card-bg 만 남는다.
+ */
+.widget::before {
+  content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background-image: var(--wallpaper);
+  background-size: var(--wallpaper-w) var(--wallpaper-h);
+  background-position:
+    calc(var(--wallpaper-ox) - var(--wx))
+    calc(var(--wallpaper-oy) - var(--wy));
+  background-repeat: var(--wallpaper-repeat, no-repeat);
+}
+/* 카드 배경(반투명 --card-bg)은 배경화면 위에 겹쳐 얹는다 */
+.widget::after {
+  content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: var(--card-bg);
+}
+.widget-body { position: relative; z-index: 1; }
+.widget-header, .widget-resize { z-index: 2; }
+/* 카드가 없으면 배경이 곧 배경화면이라 글자에 그림자를 줘야 읽힌다 */
+:root[data-card-style="none"] .widget { text-shadow: 0 1px 3px var(--scrim); }
+
+.widget.editing { box-shadow: 0 0 0 2px var(--accent), var(--shadow-card); }
 /* 편집 모드 전용 오버레이 핸들 (제목 없음) */
 .widget-header {
   position: absolute; inset: 0 0 auto 0; z-index: 2;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 4px 8px; font-size: 12px; color: var(--text-dim); cursor: move;
+  padding: 4px 8px; font-size: var(--fs-label); color: var(--text-dim); cursor: move;
   background: linear-gradient(var(--surface-strong), transparent);
 }
 .widget-grip { letter-spacing: -1px; }
 .widget-actions { display: inline-flex; gap: 4px; }
 .widget-actions button {
   background: transparent; border: 0; color: var(--text-dim); padding: 0 4px; border-radius: 6px; line-height: 1;
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
-.widget-actions button:hover { color: var(--text); background: rgba(255,255,255,.1); }
-.widget-body { flex: 1 1 auto; min-height: 0; padding: 12px; position: relative; overflow: hidden; }
+.widget-actions button:hover { color: var(--text); background: var(--fill-hover); }
+.widget-body { flex: 1 1 auto; min-height: 0; padding: 12px; overflow: hidden; }
 .widget-resize {
   position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; z-index: 3;
   background: linear-gradient(135deg, transparent 50%, var(--accent) 50%);
   border-bottom-right-radius: var(--radius);
 }
-.widget-scale { font-size: 10px; color: var(--text-dim); align-self: center; margin-right: 4px; }
+.widget-scale { font-size: var(--fs-micro); color: var(--text-dim); align-self: center; margin-right: 4px; }

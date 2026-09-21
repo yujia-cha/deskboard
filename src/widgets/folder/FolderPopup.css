@@ -1,6 +1,6 @@
 .folder-popup {
   position: fixed; z-index: 9999; background: var(--surface-strong); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 8px; overflow: auto; box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  border-radius: var(--radius); padding: 8px; overflow: auto; box-shadow: var(--shadow-pop);
   animation: folder-pop .12s ease-out;
 }
 @keyframes folder-pop { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
@@ -9,8 +9,8 @@
 .folder-popup.grid { display: grid; grid-template-columns: repeat(auto-fill, 64px); gap: 8px; align-content: start; }
 .folder-item { display: flex; align-items: center; gap: 8px; background: transparent; border: 0; color: var(--text); border-radius: 8px; padding: 4px 6px; text-align: left; }
 .folder-popup.grid .folder-item { flex-direction: column; text-align: center; padding: 6px 2px; }
-.folder-item:hover { background: rgba(255, 255, 255, .08); }
+.folder-item:hover { background: var(--fill); }
 .folder-item-icon { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; font-size: 18px; }
 .folder-item-icon img { width: 100%; height: 100%; object-fit: contain; }
-.folder-item-name { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.folder-popup-empty { color: var(--text-dim); font-size: 12px; padding: 8px; }
+.folder-item-name { font-size: var(--fs-meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.folder-popup-empty { color: var(--text-dim); font-size: var(--fs-label); padding: 8px; }

@@ -1,10 +1,10 @@
 .sysmon { height: 100%; display: flex; flex-direction: column; gap: 8px; }
 .sysmon-gauges { display: flex; justify-content: space-around; align-items: flex-start; flex: 0 0 auto; }
 .sysmon-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.sysmon-meta { font-size: 12px; min-height: 16px; }
+.sysmon-meta { font-size: var(--fs-label); min-height: 16px; }
 .gauge { display: flex; flex-direction: column; align-items: center; }
-.gauge-label { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
-.gauge-sub { font-size: 11px; color: var(--text-dim); }
+.gauge-label { font-size: var(--fs-label); color: var(--text-dim); margin-top: 2px; }
+.gauge-sub { font-size: var(--fs-meta); color: var(--text-dim); }
 .temp { font-variant-numeric: tabular-nums; }
 .temp.warm { color: var(--warn); }
 .temp.hot { color: var(--danger); }
@@ -12,10 +12,25 @@
 .sysmon-cores .core { flex: 1; background: var(--accent); opacity: .7; border-radius: 2px 2px 0 0; transition: height .5s; }
 .sysmon-history { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; }
 .sysmon-disks { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
-.sysmon-disk { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; font-size: 11px; }
-.sysmon-disk-label { font-weight: 600; }
-.sysmon-disk-bar { height: 8px; background: rgba(255,255,255,.1); border-radius: 4px; overflow: hidden; }
+.sysmon-disk { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; font-size: var(--fs-meta); }
+.sysmon-disk-label { font-weight: var(--fw-title); }
+.sysmon-disk-bar { height: 8px; background: var(--track); border-radius: 4px; overflow: hidden; }
 .sysmon-disk-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 4px; transition: width .6s; }
 .sysmon-disk-bar > span.warn { background: var(--warn); }
 .sysmon-disk-bar > span.danger { background: var(--danger); }
 .sysmon-disk-text { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* 네트워크 — 업/다운 속도 + 같은 눈금의 미니 그래프 */
+.sysmon-net { display: flex; flex-direction: column; gap: 2px; flex: 0 0 auto; font-size: var(--fs-meta); }
+.sysmon-net-row { display: grid; grid-template-columns: 12px 72px 1fr; align-items: center; gap: 6px; }
+.sysmon-net-dir { color: var(--text-dim); text-align: center; }
+.sysmon-net-val { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+.sysmon-net-spark { min-width: 0; }
+
+/* CPU 상위 프로세스 */
+.sysmon-top { display: flex; flex-direction: column; gap: 3px; flex: 0 0 auto; font-size: var(--fs-meta); }
+.sysmon-proc { display: grid; grid-template-columns: minmax(0, 1fr) 46px auto; align-items: center; gap: 6px; }
+.sysmon-proc-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sysmon-proc-bar { height: 6px; background: var(--track); border-radius: 3px; overflow: hidden; }
+.sysmon-proc-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .5s var(--ease); }
+.sysmon-proc-cpu { font-variant-numeric: tabular-nums; color: var(--text-dim); white-space: nowrap; }

@@ -36,24 +36,44 @@ export const BLOCK_GLYPHS: Record<string, string[]> = {
 export const BLOCK_ROWS = 5;
 
 type Font = { glyphs: Record<string, string[]>; rows: number };
-const FONTS: Record<"dots" | "blocks", Font> = {
+
+/** 격자 렌더러를 쓰는 숫자 스타일. 어떤 글리프 세트를 쓰는지만 다르다. */
+export type GridStyle = "dots" | "blocks" | "matrix" | "neon";
+
+/** 스타일별 글리프 세트 — matrix 는 도트(5×7), neon 은 블록(3×5) 을 쓴다. */
+const FONTS: Record<GridStyle, Font> = {
   dots: { glyphs: GLYPHS, rows: GLYPH_ROWS },
+  matrix: { glyphs: GLYPHS, rows: GLYPH_ROWS },
   blocks: { glyphs: BLOCK_GLYPHS, rows: BLOCK_ROWS },
+  neon: { glyphs: BLOCK_GLYPHS, rows: BLOCK_ROWS },
+};
+
+/** 셀 사이 간격 비율. 촘촘할수록 한 덩어리로 보인다. */
+const GAP_RATIO: Record<GridStyle, number> = {
+  dots: 0.12, matrix: 0.18, blocks: 0.22, neon: 0.26,
 };
 
 /**
- * 텍스트를 글리프 격자로 렌더.
- * - style="dots": 켜진 셀에 문자(dot)를 찍는다 (■, 이모지 등)
- * - style="blocks": 켜진 셀을 색 있는 둥근 사각형으로 그린다 (gap 만큼 띄움)
+ * 텍스트를 글리프 격자로 렌더. 켜진 셀을 무엇으로 그리는지만 스타일마다 다르다 (CSS 가 처리).
+ * - dots   : 켜진 셀에 문자(dot)를 찍는다 (■, 이모지 등)
+ * - matrix : 원형 LED. 꺼진 셀도 어둡게 그려 전광판처럼 보인다
+ * - blocks : 둥근 사각형 (디지털 시계)
+ * - neon   : 둥근 사각형 + 글로우
+ *
  * cell = 셀 한 변(px), 글자 사이는 1셀 간격.
+ * glow = 네온 글로우 세기 0~1.
  */
-export function DotDigits({ text, cell, style = "dots", dot = "■", color, gap }: {
-  text: string; cell: number; style?: "dots" | "blocks"; dot?: string; color?: string; gap?: number;
+export function DotDigits({ text, cell, style = "dots", dot = "■", color, gap, glow = 0.6 }: {
+  text: string; cell: number; style?: GridStyle; dot?: string; color?: string; gap?: number; glow?: number;
 }) {
   const font = FONTS[style];
-  const g = cell * (gap ?? (style === "blocks" ? 0.22 : 0.12));
+  const g = cell * (gap ?? GAP_RATIO[style]);
   const isEmoji = /\p{Extended_Pictographic}/u.test(dot);
-  const vars = { "--cell": `${cell}px`, "--gap": `${g}px`, "--block": color || "var(--accent)" } as CSSProperties;
+  const vars = {
+    "--cell": `${cell}px`, "--gap": `${g}px`,
+    "--block": color || "var(--accent)",
+    "--glow": String(Math.max(0, Math.min(1, glow))),
+  } as CSSProperties;
   return (
     <div className={`dots dots-${style}`} style={{ gap: cell, ...vars }}>
       {[...text].map((ch, i) => {
@@ -74,7 +94,7 @@ export function DotDigits({ text, cell, style = "dots", dot = "■", color, gap 
 }
 
 /** 주어진 영역에 글자 수만큼 넣을 수 있는 최대 셀 크기. */
-export function fitCell(text: string, w: number, h: number, style: "dots" | "blocks" = "dots"): number {
+export function fitCell(text: string, w: number, h: number, style: GridStyle = "dots"): number {
   const font = FONTS[style];
   const cols = [...text].reduce((n, ch) => n + (font.glyphs[ch] ?? font.glyphs[" "])[0].length, 0) + Math.max(0, text.length - 1);
   return Math.max(3, Math.floor(Math.min(w / cols, h / font.rows)));

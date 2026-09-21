@@ -33,6 +33,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             window::build_tray(app.handle())?;
+            // Win+D(바탕화면 보기)로 대시보드가 같이 숨지 않게 한다.
+            window::exclude_from_show_desktop(app.handle());
             window::start_hit_test(app.handle().clone());
             autostart::sync(app.handle());
 
@@ -74,6 +76,28 @@ pub fn run() {
             providers::folders::folder_recycle,
             providers::folders::folder_read_image,
             providers::folders::folder_watch,
+            providers::wallpaper::get_wallpaper,
+            providers::wallpaper::wallpaper_set_active,
+            providers::sysmon::proc::sysmon_set_detail,
+            providers::weather::weather_set_active,
+            providers::weather::weather_search,
+            providers::notes::notes_list,
+            providers::notes::notes_upsert,
+            providers::notes::notes_delete,
+            providers::notes::notes_clear_done,
+            providers::notes::notes_reorder,
+            providers::activity::activity_set_active,
+            providers::activity::activity_usage,
+            providers::activity::activity_sessions,
+            providers::activity::activity_set_category,
+            providers::git::git_set_roots,
+            providers::git::git_status,
+            providers::git::git_open,
+            providers::github::github_set_token,
+            providers::github::github_has_token,
+            providers::github::github_logout,
+            providers::github::github_set_active,
+            providers::github::github_fetch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running deskboard");

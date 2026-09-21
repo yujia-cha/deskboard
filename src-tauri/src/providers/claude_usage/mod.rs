@@ -182,7 +182,8 @@ async fn limits_loop(app: AppHandle, refresh: Arc<Notify>) {
     // 조회 간격: 정상 120초. 트랜스크립트 변경/수동 새로고침으로 깨워도 마지막 조회 후 최소 60초는 띄운다.
     // 429 를 받으면 5분 쉰다 (비공식 엔드포인트라 공손하게).
     // Instant 에서 Duration 을 빼면 부팅 직후(업타임 < 1h, 자동 시작 상황)에 패닉하므로 Option 으로 둔다
-    let mut last_fetch: Option<std::time::Instant> = None;
+    // 루프 맨 위에서 항상 대입하므로 초기값을 주지 않는다 (주면 읽히지 않아 경고가 난다).
+    let mut last_fetch: Option<std::time::Instant>;
     loop {
         let l = limits::fetch(&http, &path).await;
         last_fetch = Some(std::time::Instant::now());

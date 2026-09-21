@@ -1,0 +1,20 @@
+.wordclock {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100%; gap: calc(var(--cell) * 0.12);
+  font-family: var(--mono);
+  line-height: 1;
+}
+.wordclock-row { display: flex; gap: calc(var(--cell) * 0.18); }
+.wordclock-row span {
+  width: var(--cell); height: var(--cell);
+  display: flex; align-items: center; justify-content: center;
+  font-size: calc(var(--cell) * 0.72);
+  /* 꺼진 글자도 아주 흐리게 남겨야 격자로 읽힌다 */
+  color: var(--text-dim); opacity: .22;
+  transition: opacity var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.wordclock-row span.on {
+  color: var(--lit, var(--accent));
+  opacity: 1;
+  font-weight: var(--fw-title);
+}

@@ -1,12 +1,12 @@
-.sp-volume-icon { font-size: 14px; }
+.sp-volume-icon { font-size: var(--fs-title); }
 .sp-volume-pop {
   position: fixed; z-index: 9999; background: var(--surface-strong); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  border-radius: var(--radius); box-shadow: var(--shadow-pop);
   display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0 8px;
 }
 .sp-volume-track {
-  position: relative; flex: 1 1 auto; width: 6px; border-radius: 3px; background: rgba(255, 255, 255, .12);
+  position: relative; flex: 1 1 auto; width: 6px; border-radius: 3px; background: var(--track);
   touch-action: none; cursor: pointer;
 }
 .sp-volume-fill { position: absolute; left: 0; bottom: 0; width: 100%; border-radius: 3px; background: var(--accent); }
-.sp-volume-value { font-size: 10px; font-variant-numeric: tabular-nums; }
+.sp-volume-value { font-size: var(--fs-micro); font-variant-numeric: tabular-nums; }

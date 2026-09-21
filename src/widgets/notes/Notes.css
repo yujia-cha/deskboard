@@ -1,0 +1,25 @@
+.notes { height: 100%; display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-label); }
+.notes-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex: 0 0 auto; }
+.notes-title { font-weight: var(--fw-title); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.notes-head .link { background: transparent; border: 0; color: var(--text-dim); font-size: var(--fs-micro); padding: 0; text-decoration: underline; white-space: nowrap; }
+.notes-head .link:hover { color: var(--text); }
+.notes-error { color: var(--danger); font-size: var(--fs-meta); }
+
+.notes-list { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 1px; }
+.notes-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px; border-radius: 6px; padding: 1px 2px; }
+.notes-item:hover { background: var(--fill); }
+.notes-check { background: transparent; border: 0; color: var(--text-dim); padding: 0 2px; line-height: 1; font-size: var(--fs-title); }
+.notes-item.done .notes-check { color: var(--ok); }
+.notes-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: text; }
+.notes-text.strike { text-decoration: line-through; }
+.notes-item.done .notes-text { color: var(--text-dim); }
+.notes-edit { min-width: 0; background: var(--fill); border: 1px solid var(--accent); border-radius: 4px; padding: 0 4px; }
+/* 삭제 버튼은 항목에 올렸을 때만 — 평소엔 목록이 깔끔해야 한다 */
+.notes-del { background: transparent; border: 0; color: var(--text-dim); padding: 0 2px; line-height: 1; opacity: 0; }
+.notes-item:hover .notes-del { opacity: 1; }
+.notes-del:hover { color: var(--danger); }
+
+.notes-add { display: flex; gap: 4px; flex: 0 0 auto; }
+.notes-add input { flex: 1; min-width: 0; background: var(--fill); border: 1px solid var(--border); border-radius: 8px; padding: 3px 8px; }
+.notes-add button { background: var(--fill-hover); border: 0; color: var(--text); border-radius: 8px; padding: 0 10px; }
+.notes-add button:disabled { opacity: .4; cursor: default; }

@@ -1,6 +1,6 @@
 //! 활동 추적 — 무엇을 하며 시간을 보냈는지.
 //!
-//! 앞에 떠 있는 창의 **실행 파일 이름만** 5초마다 확인해 하루치로 누적한다.
+//! 앞에 떠 있는 창의 **실행 파일 이름만** 몇 초마다 확인해 하루치로 누적한다.
 //! 창 제목은 저장하지 않는다 — 문서명·탭 제목이 디스크에 남을 이유가 없다.
 //!
 //! 위젯 셋(플레이타임·앱 사용시간·일일 회고)이 이 하나를 공유한다. 폴링을 셋으로
@@ -8,6 +8,18 @@
 //!
 //! 키보드·마우스 입력이 `IDLE_AFTER` 동안 없으면 자리를 비운 것으로 보고 세지 않는다 —
 //! 안 그러면 켜두기만 해도 시간이 쌓인다.
+//!
+//! ## 놓치지 않기 위해 한 것들
+//!
+//!  - **확인은 자주, 기록은 드물게.** 전경 창을 읽는 것은 Win32 호출 몇 번(수십 마이크로초)
+//!    이라 2초마다 해도 싸다. 비싼 것은 SQL 이므로 메모리에 모았다가 30초마다 한 번 적는다.
+//!    예전에는 둘을 묶어 5초였고, 그보다 짧게 쓴 프로그램은 통째로 사라졌다.
+//!  - **실제로 흐른 시간을 센다.** 틱마다 고정값을 더하면 절전에서 깨어났을 때나 스레드가
+//!    밀렸을 때 기록이 어긋난다. 다만 한 틱에 인정하는 값은 `MAX_TICK` 으로 자른다 —
+//!    최대 절전 몇 시간을 사용 시간으로 적을 수는 없다.
+//!  - **대시보드를 눌렀다고 구간을 끊지 않는다.** 위젯을 클릭하면 전경이 우리가 되는데,
+//!    예전에는 그것을 "자리 비움"과 같게 봐서 세던 구간이 거기서 끊기고 시간도 날아갔다.
+//!    지금은 `Foreground::Ours` 로 따로 보고 **아무 일도 하지 않는다**(`transition`).
 
 mod rules;
 mod store;
@@ -24,8 +36,12 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 pub use store::{SessionRow, UsageRow};
 
-/// 폴링 주기. 이 값이 곧 한 번에 누적되는 초다.
-const TICK: Duration = Duration::from_secs(5);
+/// 전경 창을 확인하는 주기. 짧을수록 잠깐 쓴 프로그램을 덜 놓친다.
+const TICK: Duration = Duration::from_secs(2);
+/// 모아 둔 시간을 디스크에 적는 주기. 틱마다 쓰면 SQL 이 초당 여러 번 돈다.
+const FLUSH_EVERY: Duration = Duration::from_secs(30);
+/// 한 틱에 인정하는 최대 초. 절전에서 깨어나면 경과가 몇 시간일 수 있다.
+const MAX_TICK: i64 = 15;
 /// 입력이 이만큼 없으면 자리를 비운 것으로 본다.
 const IDLE_AFTER: Duration = Duration::from_secs(180);
 /// 이 시간 안에 같은 프로그램으로 돌아오면 같은 세션으로 잇는다.
@@ -62,6 +78,19 @@ pub fn within_gap(prev_end: &str, next_start: &str, gap: i64) -> bool {
 
 // --- 지금 앞에 있는 프로그램 -------------------------------------------------------
 
+/// 지금 전경에 있는 것. 넷을 구분해야 기록이 어긋나지 않는다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Foreground {
+    /// 다른 프로그램 (정규화한 실행 파일 이름)
+    App(String),
+    /// 대시보드 자신 — 위젯을 만지는 중이다. "무엇을 쓰는 시간"이 아니지만 **끊지도 않는다**.
+    Ours,
+    /// 자리를 비웠다 (입력이 `IDLE_AFTER` 동안 없음)
+    Away,
+    /// 읽지 못했다 — 권한 없는 프로세스, 잠금 화면, 전환 중. 판단을 미룬다.
+    Unknown,
+}
+
 #[cfg(target_os = "windows")]
 fn foreground_pid() -> Option<u32> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
@@ -73,11 +102,6 @@ fn foreground_pid() -> Option<u32> {
     let mut pid: u32 = 0;
     unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
     if pid == 0 {
-        return None;
-    }
-    // 대시보드 자신은 세지 않는다. 바탕화면을 보거나 위젯을 만지면 우리가 전경 창이 되는데,
-    // 그건 "deskboard 를 사용한 시간"이 아니다.
-    if pid == std::process::id() {
         return None;
     }
     Some(pid)
@@ -140,36 +164,60 @@ pub struct Transition {
     pub count: Option<String>,
 }
 
-/// 전경 프로그램이 `prev` 에서 `now` 로 바뀌었을 때의 동작.
-/// `now` 가 None 이면 자리를 비웠거나 앞 창을 읽지 못한 것이다.
-pub fn transition(prev: Option<&str>, now: Option<&str>) -> Transition {
-    match (prev, now) {
-        // 같은 프로그램을 계속 쓰는 중
-        (Some(a), Some(b)) if a == b => Transition {
-            close_previous: false,
-            start_new: false,
-            count: Some(b.to_string()),
-        },
-        // 다른 프로그램으로 넘어감 — 이전 구간을 닫고 새로 연다
-        (Some(_), Some(b)) => Transition {
-            close_previous: true,
-            start_new: true,
-            count: Some(b.to_string()),
-        },
+/// 전경이 `prev` 에서 `now` 로 바뀌었을 때 무엇을 할지.
+///
+/// 핵심은 **`Ours`/`Unknown` 에서 아무것도 하지 않는 것**이다. 위젯을 한 번 클릭했다고
+/// 세던 구간이 끊기면, 짧게 여러 번 만지는 것만으로 하루가 토막 난다.
+pub fn transition(prev: Option<&str>, now: &Foreground) -> Transition {
+    match now {
+        // 판단을 미룬다 — 세던 것을 닫지도, 새로 열지도, 시간을 더하지도 않는다.
+        Foreground::Ours | Foreground::Unknown => Transition::default(),
         // 자리를 비움 — 구간만 닫는다
-        (Some(_), None) => Transition {
-            close_previous: true,
+        Foreground::Away => Transition {
+            close_previous: prev.is_some(),
             start_new: false,
             count: None,
         },
-        // 돌아옴
-        (None, Some(b)) => Transition {
-            close_previous: false,
-            start_new: true,
-            count: Some(b.to_string()),
+        Foreground::App(b) => match prev {
+            // 같은 프로그램을 계속 쓰는 중
+            Some(a) if a == b => Transition {
+                close_previous: false,
+                start_new: false,
+                count: Some(b.clone()),
+            },
+            // 다른 프로그램으로 넘어감 — 이전 구간을 닫고 새로 연다
+            Some(_) => Transition {
+                close_previous: true,
+                start_new: true,
+                count: Some(b.clone()),
+            },
+            // 돌아옴
+            None => Transition {
+                close_previous: false,
+                start_new: true,
+                count: Some(b.clone()),
+            },
         },
-        (None, None) => Transition::default(),
     }
+}
+
+/// 디스크에 적기 전까지 모아 두는 시간. (날짜, 실행 파일) → 초.
+type Pending = HashMap<(String, String), i64>;
+
+/// 모아 둔 시간을 한 번의 잠금 안에서 적는다. 비어 있으면 아무 일도 하지 않는다.
+fn flush(app: &AppHandle, pending: &mut Pending) {
+    if pending.is_empty() {
+        return;
+    }
+    if let Some(st) = app.try_state::<ActivityState>() {
+        if let Ok(mut s) = st.store.lock() {
+            for ((day, exe), secs) in pending.iter() {
+                let _ = s.add_seconds(day, exe, *secs);
+            }
+        }
+    }
+    pending.clear();
+    notify(app, false);
 }
 
 fn run_loop(app: AppHandle) {
@@ -177,29 +225,44 @@ fn run_loop(app: AppHandle) {
     let mut exe_cache: Option<(u32, String)> = None;
     let mut current: Option<Run> = None;
     let mut last_prune = String::new();
+    // 아직 디스크에 적지 않은 시간. FLUSH_EVERY 마다, 그리고 구간이 끝날 때 적는다.
+    let mut pending: Pending = HashMap::new();
+    let mut last_flush = std::time::Instant::now();
+    let mut last_tick = std::time::Instant::now();
 
     loop {
         std::thread::sleep(TICK);
+        // 실제로 흐른 시간을 센다 — 틱마다 고정값을 더하면 스레드가 밀리거나 절전에서
+        // 깨어났을 때 기록이 어긋난다. 다만 한 번에 인정하는 값은 잘라 둔다.
+        let dt = (last_tick.elapsed().as_secs() as i64).clamp(0, MAX_TICK);
+        last_tick = std::time::Instant::now();
+
         if !ACTIVE.load(Ordering::Relaxed) {
-            // 위젯이 없으면 세던 구간만 닫고 쉰다
+            // 위젯이 없으면 세던 구간을 닫고 모아 둔 것까지 적은 뒤 쉰다
             if let Some(run) = current.take() {
                 finish(&app, run);
             }
+            flush(&app, &mut pending);
             continue;
         }
 
         let now = now_local();
-        let away = idle_for() >= IDLE_AFTER;
-        let exe = if away { None } else { current_exe(&mut exe_cache) };
+        let fg = if idle_for() >= IDLE_AFTER {
+            Foreground::Away
+        } else {
+            current_foreground(&mut exe_cache)
+        };
 
-        let step = transition(current.as_ref().map(|r| r.exe.as_str()), exe.as_deref());
+        let step = transition(current.as_ref().map(|r| r.exe.as_str()), &fg);
         if step.close_previous {
             if let Some(run) = current.take() {
+                // 구간을 닫을 때는 총계도 함께 맞춰 둔다 — 위젯이 둘을 나란히 보여 준다.
+                flush(&app, &mut pending);
                 finish(&app, run);
             }
         }
         if let Some(e) = &step.count {
-            add(&app, &day_of(&now), e, TICK.as_secs() as i64);
+            *pending.entry((day_of(&now), e.clone())).or_insert(0) += dt;
         }
         if step.start_new {
             let e = step.count.clone().unwrap_or_default();
@@ -207,17 +270,25 @@ fn run_loop(app: AppHandle) {
                 exe: e,
                 started: stamp(&now),
                 last: stamp(&now),
-                seconds: TICK.as_secs() as i64,
+                seconds: dt,
             });
-        } else if let Some(run) = current.as_mut() {
-            run.seconds += TICK.as_secs() as i64;
-            run.last = stamp(&now);
+        } else if step.count.is_some() {
+            if let Some(run) = current.as_mut() {
+                run.seconds += dt;
+                run.last = stamp(&now);
+            }
+        }
+
+        if last_flush.elapsed() >= FLUSH_EVERY {
+            last_flush = std::time::Instant::now();
+            flush(&app, &mut pending);
         }
 
         // 하루에 한 번 오래된 기록 정리
         let today = day_of(&now);
         if last_prune != today {
             last_prune = today.clone();
+            flush(&app, &mut pending); // 날짜가 바뀌었다 — 어제 것을 어제 날짜로 적어 둔다
             let cutoff = (now - chrono::Duration::days(KEEP_DAYS)).format("%Y-%m-%d").to_string();
             if let Some(st) = app.try_state::<ActivityState>() {
                 if let Ok(mut s) = st.store.lock() {
@@ -260,22 +331,34 @@ fn exe_of_pid(_pid: u32) -> Option<String> {
     None
 }
 
-/// 앞에 있는 창의 실행 파일 이름 (정규화). 못 읽으면 None.
+/// 지금 전경에 있는 것.
 ///
-/// 같은 프로그램을 계속 쓰는 동안에는 pid 가 그대로라 조회조차 하지 않는다.
-fn current_exe(cache: &mut Option<(u32, String)>) -> Option<String> {
-    let pid = foreground_pid()?;
+/// 같은 프로그램을 계속 쓰는 동안에는 pid 가 그대로라 실행 파일 경로를 다시 읽지 않는다.
+/// 읽지 못한 경우를 `Unknown` 으로 따로 돌려주는 것이 중요하다 — 그걸 "자리 비움"과
+/// 같게 보면 잠깐의 실패마다 구간이 끊긴다.
+fn current_foreground(cache: &mut Option<(u32, String)>) -> Foreground {
+    let Some(pid) = foreground_pid() else {
+        return Foreground::Unknown;
+    };
+    // 대시보드 자신은 세지 않는다. 바탕화면을 보거나 위젯을 만지면 우리가 전경이 되는데,
+    // 그건 "deskboard 를 사용한 시간"이 아니다. 그렇다고 쓰던 프로그램의 구간을 끊지도 않는다.
+    if pid == std::process::id() {
+        return Foreground::Ours;
+    }
     if let Some((cached_pid, name)) = cache {
         if *cached_pid == pid {
-            return Some(name.clone());
+            return Foreground::App(name.clone());
         }
     }
-    let n = normalize_exe(&exe_of_pid(pid)?);
+    let Some(path) = exe_of_pid(pid) else {
+        return Foreground::Unknown;
+    };
+    let n = normalize_exe(&path);
     if n.is_empty() {
-        return None;
+        return Foreground::Unknown;
     }
     *cache = Some((pid, n.clone()));
-    Some(n)
+    Foreground::App(n)
 }
 
 /// 마지막으로 화면 갱신을 알린 시각.
@@ -296,15 +379,6 @@ fn notify(app: &AppHandle, force: bool) {
         *last = Some(std::time::Instant::now());
     }
     let _ = app.emit("activity://changed", ());
-}
-
-fn add(app: &AppHandle, day: &str, exe: &str, secs: i64) {
-    if let Some(st) = app.try_state::<ActivityState>() {
-        if let Ok(mut s) = st.store.lock() {
-            let _ = s.add_seconds(day, exe, secs);
-        }
-    }
-    notify(app, false);
 }
 
 fn finish(app: &AppHandle, run: Run) {
@@ -540,16 +614,20 @@ mod tests {
         assert_eq!(seconds_between("bad", "worse"), 0);
     }
 
+    fn app(x: &str) -> Foreground {
+        Foreground::App(x.into())
+    }
+
     #[test]
     fn staying_in_one_program_just_keeps_counting() {
-        let t = transition(Some("code"), Some("code"));
+        let t = transition(Some("code"), &app("code"));
         assert_eq!(t.count.as_deref(), Some("code"));
         assert!(!t.close_previous && !t.start_new);
     }
 
     #[test]
     fn switching_closes_the_old_run_and_opens_a_new_one() {
-        let t = transition(Some("code"), Some("eldenring"));
+        let t = transition(Some("code"), &app("eldenring"));
         assert!(t.close_previous && t.start_new);
         // 이번 틱은 새 프로그램 쪽에 붙는다
         assert_eq!(t.count.as_deref(), Some("eldenring"));
@@ -557,7 +635,7 @@ mod tests {
 
     #[test]
     fn going_idle_closes_the_run_and_counts_nothing() {
-        let t = transition(Some("code"), None);
+        let t = transition(Some("code"), &Foreground::Away);
         assert!(t.close_previous);
         assert!(!t.start_new);
         assert_eq!(t.count, None);
@@ -565,24 +643,50 @@ mod tests {
 
     #[test]
     fn coming_back_opens_a_run_without_closing_anything() {
-        let t = transition(None, Some("code"));
+        let t = transition(None, &app("code"));
         assert!(!t.close_previous && t.start_new);
         assert_eq!(t.count.as_deref(), Some("code"));
     }
 
     #[test]
     fn staying_idle_does_nothing_at_all() {
-        assert_eq!(transition(None, None), Transition::default());
+        assert_eq!(transition(None, &Foreground::Away), Transition::default());
+    }
+
+    #[test]
+    fn touching_the_dashboard_does_not_break_the_run() {
+        // 위젯을 클릭하면 전경이 우리가 된다. 예전에는 이것을 자리 비움과 같게 봐서
+        // 세던 구간이 끊기고 시간도 날아갔다 — 짧게 여러 번 만지면 하루가 토막 났다.
+        let t = transition(Some("eldenring"), &Foreground::Ours);
+        assert_eq!(t, Transition::default());
+        assert!(!t.close_previous, "구간을 닫으면 안 된다");
+        assert_eq!(t.count, None, "대시보드를 만진 시간은 세지 않는다");
+    }
+
+    #[test]
+    fn an_unreadable_foreground_waits_instead_of_deciding() {
+        // 권한 없는 프로세스·잠금 화면·전환 중. 잠깐의 실패로 구간을 끊지 않는다.
+        assert_eq!(transition(Some("code"), &Foreground::Unknown), Transition::default());
+        assert_eq!(transition(None, &Foreground::Unknown), Transition::default());
     }
 
     #[test]
     fn time_is_never_counted_for_two_programs_in_one_tick() {
         // 한 틱은 한 프로그램에만 붙어야 총합이 실제 시간을 넘지 않는다
-        for (a, b) in [(Some("x"), Some("y")), (Some("x"), Some("x")), (None, Some("y"))] {
-            assert!(transition(a, b).count.is_some());
+        for (a, b) in [
+            (Some("x"), app("y")),
+            (Some("x"), app("x")),
+            (None, app("y")),
+        ] {
+            assert!(transition(a, &b).count.is_some());
         }
-        for (a, b) in [(Some("x"), None), (None, None)] {
-            assert!(transition(a, b).count.is_none());
+        for (a, b) in [
+            (Some("x"), Foreground::Away),
+            (None, Foreground::Away),
+            (Some("x"), Foreground::Ours),
+            (Some("x"), Foreground::Unknown),
+        ] {
+            assert!(transition(a, &b).count.is_none());
         }
     }
 }

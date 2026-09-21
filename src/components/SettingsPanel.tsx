@@ -144,6 +144,9 @@ export function SettingsPanel() {
                 suffix={s.blurStrength === 0 ? " (끔)" : ""} onChange={s.setBlurStrength} />
               <Slider label="모서리 반경" value={s.cornerRadius} min={0} max={32} step={2}
                 suffix="px" onChange={s.setCornerRadius} />
+              <Slider label="테두리 두께" value={s.borderWidth} min={1} max={6} step={1}
+                title="카드 경계선의 두께. 진하기와 따로 조절합니다."
+                suffix="px" onChange={s.setBorderWidth} />
               <Slider label="테두리 진하기" value={s.borderStrength} min={0} max={100} step={5}
                 title="카드 경계선의 진하기. 배경화면이 복잡하면 올려서 카드를 또렷하게 만듭니다."
                 suffix="%" onChange={s.setBorderStrength} />

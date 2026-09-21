@@ -41,6 +41,8 @@ interface Persisted {
    * 0 이면 거의 안 보이는 실선, 100 이면 편집 모드 링에 가까울 만큼 또렷하다.
    */
   borderStrength: number;
+  /** 카드 테두리 두께 px 1~6. 진하기와 따로 둔다 — 두께와 진하기는 다른 축이다. */
+  borderWidth: number;
   accent: string;
   gridSnap: number;
   /** 위젯 내용을 크기에 맞춰 확대/축소 */
@@ -74,6 +76,7 @@ interface State extends Persisted {
   setBlurStrength(v: number): void;
   setCornerRadius(v: number): void;
   setBorderStrength(v: number): void;
+  setBorderWidth(v: number): void;
   setAccent(c: string): void;
   setAutoScale(v: boolean): void;
   setCanvasMonitor(name: string | null): void;
@@ -117,7 +120,8 @@ export const resolvePalette = (
 
 type ThemeBits = Pick<
   Persisted,
-  "themeMode" | "palette" | "cardStyle" | "accent" | "surfaceOpacity" | "cornerRadius" | "borderStrength"
+  | "themeMode" | "palette" | "cardStyle" | "accent"
+  | "surfaceOpacity" | "cornerRadius" | "borderStrength" | "borderWidth"
 >;
 
 function applyTheme(s: ThemeBits) {
@@ -129,6 +133,7 @@ function applyTheme(s: ThemeBits) {
   d.style.setProperty("--surface-alpha", String(clamp(s.surfaceOpacity, 0, 100) / 100));
   d.style.setProperty("--radius", `${clamp(s.cornerRadius, 0, 40)}px`);
   d.style.setProperty("--border-k", String(clamp(s.borderStrength, 0, 100) / 100));
+  d.style.setProperty("--border-w", `${clamp(s.borderWidth, 1, 6)}px`);
 }
 
 const clamp = (v: number, lo: number, hi: number) =>
@@ -151,7 +156,7 @@ async function flush() {
   const data: Persisted = {
     themeMode: s.themeMode, palette: s.palette, cardStyle: s.cardStyle,
     surfaceOpacity: s.surfaceOpacity, blurStrength: s.blurStrength, cornerRadius: s.cornerRadius,
-    borderStrength: s.borderStrength,
+    borderStrength: s.borderStrength, borderWidth: s.borderWidth,
     accent: s.accent, gridSnap: s.gridSnap, autoScale: s.autoScale,
     canvasMonitor: s.canvasMonitor, autostart: s.autostart, instances: s.instances,
   };
@@ -253,6 +258,7 @@ export const useSettings = create<State>((set, get) => ({
   blurStrength: 3,
   cornerRadius: 16,
   borderStrength: 65,
+  borderWidth: 1,
   accent: "#7c9cff",
   gridSnap: 8,
   autoScale: true,
@@ -272,7 +278,7 @@ export const useSettings = create<State>((set, get) => ({
     const saved = await store.get<Partial<Persisted>>(KEY);
     const s: Persisted = {
       themeMode: "translucent", palette: "dark", cardStyle: "glass",
-      surfaceOpacity: 62, blurStrength: 3, cornerRadius: 16, borderStrength: 65,
+      surfaceOpacity: 62, blurStrength: 3, cornerRadius: 16, borderStrength: 65, borderWidth: 1,
       accent: "#7c9cff", gridSnap: 8, autoScale: true, canvasMonitor: null, autostart: true,
       ...saved,
       instances: saved?.instances ?? defaultInstances(),
@@ -305,6 +311,7 @@ export const useSettings = create<State>((set, get) => ({
   setBlurStrength(blurStrength) { set({ blurStrength }); persist(get); },
   setCornerRadius(cornerRadius) { set({ cornerRadius }); applyTheme(get()); persist(get); },
   setBorderStrength(borderStrength) { set({ borderStrength }); applyTheme(get()); persist(get); },
+  setBorderWidth(borderWidth) { set({ borderWidth }); applyTheme(get()); persist(get); },
   setAccent(accent) { set({ accent }); applyTheme(get()); persist(get); },
   setAutoScale(autoScale) { set({ autoScale }); persist(get); },
   setCanvasMonitor(canvasMonitor) {

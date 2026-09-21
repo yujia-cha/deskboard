@@ -12,7 +12,6 @@ import { folderWidget } from "./folder";
 import { weatherWidget } from "./weather";
 import { notesWidget } from "./notes";
 import { playtimeWidget } from "./playtime";
-import { gitStatusWidget } from "./gitstatus";
 import { githubWidget } from "./github";
 import { settingsWidget } from "./settings";
 
@@ -28,7 +27,6 @@ export const WIDGETS: WidgetDefinition<any>[] = [
   weatherWidget,
   notesWidget,
   playtimeWidget,
-  gitStatusWidget,
   githubWidget,
 ];
 

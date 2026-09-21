@@ -138,6 +138,27 @@ mod win {
         1
     }
 
+    /// 지금 전경 창의 화면 사각형 (left, top, right, bottom).
+    ///
+    /// 바탕화면(Progman/WorkerW)이나 창이 없으면 None — 그때는 "덮여 있지 않다"로 본다.
+    pub fn foreground_rect() -> Option<(i32, i32, i32, i32)> {
+        use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+        // SAFETY: 핸들을 얻어 사각형만 읽는다.
+        let h = unsafe { GetForegroundWindow() };
+        if h.is_null() {
+            return None;
+        }
+        let cls = class_of(h);
+        if cls == "Progman" || cls == "WorkerW" {
+            return None; // 바탕화면이 앞이면 카드는 그 위에 보인다
+        }
+        let mut r = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        if unsafe { GetWindowRect(h, &mut r) } == 0 {
+            return None;
+        }
+        Some((r.left, r.top, r.right, r.bottom))
+    }
+
     /// 배경화면이 그려지는 창. 아이콘을 품은 Progman 또는 WorkerW 다.
     pub fn desktop_window() -> Option<HWND> {
         let mut hunt = Hunt { found: std::ptr::null_mut() };
@@ -251,7 +272,12 @@ mod win {
 }
 
 #[cfg(target_os = "windows")]
-pub use win::capture_monitor;
+pub use win::{capture_monitor, foreground_rect};
+
+#[cfg(not(target_os = "windows"))]
+pub fn foreground_rect() -> Option<(i32, i32, i32, i32)> {
+    None
+}
 
 /// 이 모니터의 바탕화면을 **이미 잘라 줄인** 상태로 캡처한다. 빈 화면이면 None (파일 방식으로).
 #[cfg(target_os = "windows")]
@@ -330,8 +356,37 @@ mod tests {
     }
 
     #[test]
+    fn a_fullscreen_window_counts_as_covering_the_monitor() {
+        let m = (0, 0, 1920u32, 1080u32);
+        assert!(covers_monitor((0, 0, 1920, 1080), m));
+        // 테두리 때문에 몇 px 모자란 창도 덮은 것으로 본다
+        assert!(covers_monitor((2, 1, 1918, 1079), m));
+    }
+
+    #[test]
+    fn an_ordinary_window_does_not_cover_the_monitor() {
+        let m = (0, 0, 1920u32, 1080u32);
+        assert!(!covers_monitor((100, 100, 900, 700), m));  // 작은 창
+        assert!(!covers_monitor((0, 0, 1920, 900), m));     // 작업표시줄을 남긴 최대화 창
+        // 다른 모니터를 덮은 창은 이 모니터와 무관하다
+        assert!(!covers_monitor((1920, 0, 3840, 1080), m));
+    }
+
+    #[test]
     fn the_plan_never_asks_for_a_zero_sized_bitmap() {
         let p = capture_plan((0, 0), (4000, 4000), (0, 0, 4000, 1), 320).unwrap();
         assert!(p.dst_w >= 1 && p.dst_h >= 1);
     }
+}
+
+/// 전경 창이 이 모니터를 **통째로 덮고 있는가** (전체화면 게임·영상 등).
+///
+/// 덮여 있으면 카드가 한 픽셀도 보이지 않으므로 배경화면을 다시 찍어 봐야 아무도 못 본다.
+/// 테두리·그림자 때문에 몇 px 어긋나는 창이 있어 약간의 여유를 둔다.
+pub fn covers_monitor(fg: (i32, i32, i32, i32), monitor: (i32, i32, u32, u32)) -> bool {
+    const SLACK: i32 = 4;
+    let (fx, fy, fr, fb) = fg;
+    let (mx, my, mw, mh) = monitor;
+    let (mr, mb) = (mx + mw as i32, my + mh as i32);
+    fx <= mx + SLACK && fy <= my + SLACK && fr >= mr - SLACK && fb >= mb - SLACK
 }

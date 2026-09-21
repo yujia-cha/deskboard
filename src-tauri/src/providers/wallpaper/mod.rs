@@ -45,7 +45,7 @@ use std::time::{Duration, SystemTime};
 use tauri::{AppHandle, Emitter};
 
 pub use blur::{box_blur, downscale};
-pub use capture::capture_desktop;
+pub use capture::{capture_desktop, covers_monitor, foreground_rect};
 pub use layout::{layout, Fit};
 
 /// 프론트가 CSS 변수로 쓰는 배경화면 스냅샷.
@@ -145,6 +145,9 @@ pub fn wallpaper_set_active(active: bool) {
 
 /// 꺼져 있을 때 다시 확인하는 주기. 일이 없으므로 길어도 된다.
 const IDLE_PERIOD: Duration = Duration::from_secs(2);
+/// 카드가 아무것도 안 보일 때(전체화면 앱·창 숨김) 다시 확인하는 주기.
+/// 여기서는 캡처를 아예 하지 않으므로 `PrintWindow` 값도 들지 않는다.
+const HIDDEN_PERIOD: Duration = Duration::from_secs(5);
 /// 캡처 모드에서 **그림이 움직이고 있을 때**의 주기. 라이브 배경화면을 따라가는 속도다.
 const CAPTURE_PERIOD: Duration = Duration::from_secs(2);
 /// 캡처 모드에서 **계속 그대로일 때**의 주기. 정적 배경화면은 이쪽으로 내려앉는다.
@@ -270,6 +273,29 @@ fn canvas_geometry(app: &AppHandle) -> ((i32, i32, u32, u32), (i32, i32)) {
     }
 }
 
+/// 지금 카드가 화면에 보일 수 있는가.
+///
+/// **보이지 않으면 찍지 않는다** — 이게 남은 비용(`PrintWindow`, 바탕화면을 다시 그리게 하는
+/// 일)을 없애는 유일한 방법이다. 전체화면 게임을 하는 동안 배경화면 스냅샷을 갱신해 봐야
+/// 아무도 그것을 못 본다. 두 가지를 본다:
+///  - 창이 숨겨져 있는가 (트레이 "숨기기")
+///  - 전경 창이 이 모니터를 통째로 덮고 있는가 (전체화면 게임·영상)
+///
+/// 판단이 틀려도 손해는 스냅샷 한 번이다 — 다시 보이면 다음 주기에 따라잡는다.
+fn dashboard_visible(app: &AppHandle) -> bool {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("main") {
+        if matches!(w.is_visible(), Ok(false)) {
+            return false;
+        }
+    }
+    let (monitor, _) = canvas_geometry(app);
+    match foreground_rect() {
+        Some(fg) => !covers_monitor(fg, monitor),
+        None => true,
+    }
+}
+
 /// 캡처를 먼저 시도하고, 안 되면 배경화면 파일을 읽는다.
 fn build(app: &AppHandle, passes: u32) -> Wallpaper {
     let (monitor, work) = canvas_geometry(app);
@@ -335,6 +361,12 @@ impl Provider for WallpaperProvider {
                         std::thread::sleep(IDLE_PERIOD);
                         continue;
                     }
+                    // 카드가 안 보이는 동안에는 캡처도 하지 않는다 (전체화면 게임 등).
+                    if !dashboard_visible(&app) {
+                        std::thread::sleep(HIDDEN_PERIOD);
+                        continue;
+                    }
+
                     let passes = PASSES.load(Ordering::Relaxed);
                     let (monitor, work) = canvas_geometry(&app);
 

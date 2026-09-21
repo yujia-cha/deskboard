@@ -14,9 +14,8 @@ Windows 바탕화면에 상주하는 개인 위젯 대시보드 (Tauri 2 + React
 | `settings` | 없음 | 톱니바퀴 아이콘만 있는 정사각형(56×56). 클릭 = 편집 모드(잠금) 토글. 설정 패널 자체는 편집 모드의 편집 바 "⚙ 설정" 버튼이나 위젯 오버레이 ⚙ 로 연다 → `singleton` (항상 1개, 제거 불가, 로드 시 없으면 자동 추가·정사각형이 아니면 기본 크기로 보정) |
 | `wallpaper` | `providers/wallpaper` | 위젯 아님 — 배경화면을 읽어 블러한 스냅샷을 `wallpaper://update` 로 푸시 (카드 뒤 '진짜 반투명' 재료) |
 | `weather` | `providers/weather` | [Open-Meteo](https://open-meteo.com) — **키·가입 불필요**. 위젯이 떠 있을 때만 15분 폴링, 도시 검색은 `weather_search`(지오코딩, 역시 키 불필요) |
-| `notes` | `providers/notes` | 메모·할 일. SQLite (`notes.sqlite`). 목록은 **위젯 인스턴스마다 독립** — 여러 개 띄워 용도별로 나눠 쓴다 |
-| `playtime` | `providers/activity` | `playtime` 은 게임(분류 규칙)을 자동으로 세고, 그 밖의 프로그램은 설정의 `extra` 에 등록한 것만 더해 도넛으로 보여준다 — "게임만"과 "앱 전부"로 위젯을 나누면 같은 데이터를 두 번 보게 된다. 앞에 떠 있는 창의 실행 파일 이름만 5초마다 확인해 `activity.sqlite` 에 누적 — **창 제목은 저장하지 않는다.** 입력이 3분 없으면 자리비움으로 보고 세지 않고, 대시보드 자신도 세지 않는다. 분류는 `resources/activity-rules.json` + 사용자 규칙(`rules` 테이블이 우선) |
-| `gitstatus` | `providers/git` | 등록한 폴더 아래 2단계까지 `.git` 탐색 → 브랜치·미커밋 수·ahead/behind. `git2` crate (repo 마다 프로세스를 띄우지 않으려고). **fetch 하지 않는다** — ahead/behind 는 마지막으로 받아온 시점 기준 |
+| `notes` | `providers/notes` | 메모·할 일. SQLite (`notes.sqlite`). 목록은 **위젯 인스턴스마다 독립** — 여러 개 띄워 용도별로 나눠 쓴다. 순서는 손잡이(⠿)를 끌어 바꾼다 — 계산은 `notes/reorder.ts`("어느 항목 **앞**에 둘지"로 말해 완료 항목을 숨겨 둔 목록에서도 숨은 것들이 제자리를 지킨다), 저장은 손을 뗄 때 `notes_reorder` 한 번 |
+| `playtime` | `providers/activity` | `playtime` 은 게임(분류 규칙)을 자동으로 세고, 그 밖의 프로그램은 설정의 `extra` 에 등록한 것만 더해 도넛으로 보여준다 — "게임만"과 "앱 전부"로 위젯을 나누면 같은 데이터를 두 번 보게 된다. 앞에 떠 있는 창의 실행 파일 이름만 **2초마다** 확인해 `activity.sqlite` 에 누적 — **창 제목은 저장하지 않는다.** 확인은 자주, 기록은 드물게(30초마다 한 번 flush) — 비싼 것은 Win32 호출이 아니라 SQL 이다. 더하는 값은 **실제로 흐른 시간**(`MAX_TICK` 으로 자름)이고, 전경이 대시보드 자신이거나 읽지 못한 경우(`Foreground::Ours`/`Unknown`)에는 **아무것도 하지 않는다** — 위젯을 클릭했다고 세던 구간을 끊으면 하루가 토막 난다. 입력이 3분 없으면 자리비움으로 보고 세지 않고, 대시보드 자신도 세지 않는다. 분류는 `resources/activity-rules.json` + 사용자 규칙(`rules` 테이블이 우선) |
 | `github` | `providers/github` | 기여도 잔디(1년)·리뷰 요청·담당 이슈·미확인 알림, 그리고 등록한 저장소(8개)마다 열린 PR/이슈·내 차례인 것·그 저장소 알림·기본 브랜치 CI. **주기마다 호출은 두 번뿐** — GraphQL 하나(`parse::build_query`, 저장소는 `r0:` `r1:` 별칭으로 나란히)와 REST `/notifications` 하나(GraphQL 에 알림 API 가 없다). 저장소를 늘려도 호출 수는 그대로다. classic PAT 에 `repo`·`notifications`·**`read:user`**(잔디) 필요. PAT 는 **DPAPI 로 암호화**해 `github.dat` 에 (`providers/secrets`) |
 | `folder` | `providers/folders` | 디스코드식 바로가기 폴더. 인스턴스당 실제 디렉터리 1개. **`settings.source` 가 두 가지를 가른다** — `managed`(전용 폴더를 `%APPDATA%/com.user.deskboard/folders/<instanceId>` 에 만들어 쓴다. `dir` 은 쓰지 않고 저장도 하지 않는다)와 `link`(사용자가 고른 기존 폴더. **없으면 만들지 않고** 위젯이 이유를 보여준다). 드롭 시 이동/복사, `IShellItemImageFactory` 로 아이콘 추출, `notify` 로 변경 감지 |
 
@@ -74,10 +73,11 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
   모양은 `<html>` 의 세 속성이 결정한다 (`settings.ts::applyTheme`):
   `data-theme-mode`(translucent|solid) · `data-palette`(dark|light, 설정의 `auto` 는 OS 테마 추종) ·
   `data-card-style`(glass|minimal|borderless|none).
-  카드 불투명도·블러 강도·모서리 반경·**테두리 진하기**는 설정 슬라이더 →
-  `--surface-alpha`/`--radius`/`--border-k`. `--border-k`(0~1)는 팔레트별 기준 알파에 섞여
-  `--border` 와 `--card-highlight` 를 함께 진하게 한다 — 기본 0.65 로, 배경화면 위에서
-  카드 경계가 묻히지 않는 값이다.
+  카드 불투명도·블러 강도·모서리 반경·**테두리 진하기·두께**는 설정 슬라이더 →
+  `--surface-alpha`/`--radius`/`--border-k`/`--border-w`. `--border-k`(0~1)는 팔레트별 기준
+  알파에 섞여 `--border` 와 `--card-highlight` 를 함께 진하게 한다 — 기본 0.65 로, 배경화면
+  위에서 카드 경계가 묻히지 않는 값이다. 두께(`--border-w`, 1~6px)는 **따로 둔다** —
+  얇고 진한 선과 두껍고 은은한 선은 다른 모양이다.
 - 창은 선택 모니터의 작업영역(`GetMonitorInfoW.rcWork`) 전체를 덮는다 (`window.rs::fit_to_work_area`, 2초마다 변화 감지). 위젯 좌표 = 작업영역 좌표.
 - **z-order 는 불변식 하나로 관리한다 — 바탕화면 바로 위, 나머지 앱 아래**
   (`window.rs::enforce_z_order`). Win+D 가 Progman 을 끌어올리면 다시 그 위로 돌아간다.
@@ -184,7 +184,9 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
   셋을 고친 뒤다 (`providers/wallpaper/mod.rs` 머리말에 자세히):
   **① GDI 안에서 자르고 줄여 받는다**(`capture_monitor` 의 `StretchBlt` — CPU 로 넘어오는
   픽셀이 200만 → 6만), **② 지문이 같으면 블러도 인코딩도 emit 도 건너뛴다**,
-  **③ 주기를 결과에 맞춘다**(움직이면 2초, 3번 연속 그대로면 10초).
+  **③ 주기를 결과에 맞춘다**(움직이면 2초, 3번 연속 그대로면 10초),
+  **④ 카드가 안 보이면 아예 찍지 않는다**(`dashboard_visible` — 창이 숨겨졌거나 전경 창이
+  모니터를 통째로 덮은 전체화면 게임·영상. 남은 비용인 `PrintWindow` 까지 0 이 된다).
   고친 뒤 실측(release, 1920x1080, 60초씩): **끔 1.46% vs 켬 1.95%** — 블러가 더하는 비용이
   5.4%p 에서 0.5%p 로 줄어 기본값을 켜짐으로 돌렸다.
   끄면 `wallpaper_set_active(false)` 로 캡처 루프까지 멈춘다.

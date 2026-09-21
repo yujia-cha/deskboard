@@ -6,7 +6,8 @@
 .notes-error { color: var(--danger); font-size: var(--fs-meta); }
 
 .notes-list { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 1px; }
-.notes-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px; border-radius: 6px; padding: 1px 2px; }
+/* 손잡이 · 체크 · 내용 · 삭제 */
+.notes-item { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 4px; border-radius: 6px; padding: 1px 2px; }
 .notes-item:hover { background: var(--fill); }
 .notes-check { background: transparent; border: 0; color: var(--text-dim); padding: 0 2px; line-height: 1; font-size: var(--fs-title); }
 .notes-item.done .notes-check { color: var(--ok); }
@@ -23,3 +24,14 @@
 .notes-add input { flex: 1; min-width: 0; background: var(--fill); border: 1px solid var(--border); border-radius: 8px; padding: 3px 8px; }
 .notes-add button { background: var(--fill-hover); border: 0; color: var(--text); border-radius: 8px; padding: 0 10px; }
 .notes-add button:disabled { opacity: .4; cursor: default; }
+
+/* 순서 바꾸기 손잡이 — 평소엔 비켜 있다가 항목에 커서를 올리면 보인다 */
+.notes-grip {
+  cursor: grab; color: var(--text-dim); font-size: var(--fs-micro); line-height: 1;
+  letter-spacing: -1px; opacity: 0; transition: opacity var(--dur-fast) var(--ease);
+  touch-action: none; user-select: none; flex: 0 0 auto;
+}
+.notes-item:hover .notes-grip { opacity: .7; }
+.notes-grip:hover { opacity: 1 !important; color: var(--accent); }
+.notes-item.dragging { opacity: .55; }
+.notes-item.dragging .notes-grip { cursor: grabbing; opacity: 1; color: var(--accent); }

@@ -1,6 +1,6 @@
 [package]
 name = "deskboard"
-version = "0.4.0"
+version = "0.4.1"
 description = "Desktop widget dashboard for Windows"
 authors = ["user"]
 edition = "2021"
@@ -39,9 +39,6 @@ rand = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 walkdir = "2"
-# 여러 저장소 상태를 읽는다. 서브프로세스를 repo 마다 띄우는 것보다 훨씬 싸다.
-# vendored-openssl 등은 필요 없다 — 로컬 저장소만 읽고 네트워크는 쓰지 않는다.
-git2 = { version = "0.20", default-features = false }
 dirs = "6"
 uuid = { version = "1", features = ["v4"] }
 log = "0.4"

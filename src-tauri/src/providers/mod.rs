@@ -11,7 +11,6 @@ pub mod activity;
 pub mod calendar;
 pub mod claude_usage;
 pub mod folders;
-pub mod git;
 pub mod github;
 pub mod notes;
 pub mod oauth;
@@ -59,7 +58,6 @@ pub fn all() -> Vec<Box<dyn Provider>> {
         Box::new(weather::WeatherProvider),
         Box::new(notes::NotesProvider),
         Box::new(activity::ActivityProvider),
-        Box::new(git::GitProvider),
         Box::new(github::GithubProvider),
     ]
 }

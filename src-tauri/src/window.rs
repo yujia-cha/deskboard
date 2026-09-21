@@ -3,7 +3,7 @@
 //! 창은 항상 완전 투명(카드만 CSS 로 그림)이고, 선택한 모니터의 작업영역(작업표시줄 제외)을 꽉 채운다.
 
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
@@ -260,28 +260,27 @@ pub fn start_hit_test(app: AppHandle) {
             let mut ignoring = false;
             let mut was_pressed = false;
             let mut tick: u32 = 0;
+            let mut last_slow: u64 = 0;
             loop {
-                std::thread::sleep(std::time::Duration::from_millis(50));
+                // 평소 50ms, 셸이 무언가 한 직후에는 16ms. 화면은 한 프레임(~16ms)마다 합성되므로
+                // 그 주기면 잘못된 상태가 길어야 한두 프레임만 스친다.
+                //
+                // **8ms 까지 내리지 않는다** — 실측에서 그 속도로 z-order 를 되돌리면 셸의
+                // "바탕화면 보기" 절차에 끼어들어 Win+D 가 가끔 통째로 씹혔다(8회 중 6~7회).
+                // 깜빡임을 조금 더 줄이자고 기능을 떨어뜨릴 수는 없다.
+                // 싼 검사(`invariant_broken`)로 거르기 때문에 이 주기로도 부담이 없다.
+                std::thread::sleep(std::time::Duration::from_millis(if bursting() { 16 } else { 50 }));
                 tick = tick.wrapping_add(1);
                 let Some(win) = app.get_webview_window("main") else { continue };
 
-                // Win+D("바탕화면 보기") 대응 — 200ms 마다.
-                // 바탕화면의 자식으로 붙어 있으면 아무것도 할 게 없다(`ensure_attached` 담당).
-                // 못 붙은 경우(보조 모니터 캔버스)에만 예전 z-order 방식이 돈다.
-                // z-order 불변식. 평소에는 200ms 로 충분하지만, "바탕화면 보기" 가
-                // 시작되면(훅이 알려 준다) 셸이 Progman 을 올릴 때까지 **매 틱** 지켜본다 —
-                // 전경 변화가 올림보다 먼저 오기 때문이다 (실측).
-                let watching = NEEDS_WATCH.load(Ordering::Relaxed);
-                if tick % 4 == 0 || watching {
-                    enforce_z_order(&app);
-                    // 바탕화면이 더 이상 전경이 아니면 감시를 끈다.
-                    if watching && !desktop_has_foreground() {
-                        NEEDS_WATCH.store(false, Ordering::Relaxed);
-                    }
-                }
+                // z-order 불변식. 매 틱 확인한다 — 검사가 싸고(`invariant_broken`),
+                // 늦게 고칠수록 깜빡임이 길어지기 때문이다.
+                enforce_z_order(&app);
 
-                // 최소화 안전망은 드물게 확인해도 된다.
-                if tick % 40 == 0 {
+                // 아래 두 가지는 드물게 확인해도 된다. 틱 주기가 가변이므로 시각으로 센다.
+                let slow_due = now_ms().saturating_sub(last_slow) >= 2000;
+                if slow_due {
+                    last_slow = now_ms();
                     restore_if_minimized(&app);
                 }
 
@@ -290,7 +289,7 @@ pub fn start_hit_test(app: AppHandle) {
                 // 모니터·작업표시줄이 바뀐 경우뿐 아니라 **창이 통째로 밀려난 경우**도 잡는다.
                 // 예전에는 모니터 작업영역만 비교해서, 창이 화면 밖(-32000,-32000)으로
                 // 치워지면 영영 돌아오지 않았다 — "바탕화면 보기" 가 그렇게 하기도 한다.
-                if tick % 40 == 0 {
+                if slow_due {
                     let monitor = match app.state::<HitRegions>().0.lock() {
                         Ok(s) => s.monitor.clone(),
                         Err(_) => continue,
@@ -532,6 +531,110 @@ fn needs_fix(z: &ZScan) -> bool {
     z.desktop != 0 && (z.desktop_above || z.others_below > 0)
 }
 
+/// 우리 **바로 아래**에 있는 의미 있는 창 — z-order 불변식을 싸게 확인하는 수단.
+///
+/// `EnumWindows` 한 바퀴(창마다 클래스 이름 복사 + DWM 왕복)는 20Hz 로 돌리기엔 비싸다.
+/// 아래로 한 칸씩 내려가며 **화면에 실제로 있는 첫 창**만 찾으면 되는데, 불변식이 지켜지는
+/// 평소에는 우리와 바탕화면 사이에 보이지 않는 창 몇 개뿐이라 대개 몇 걸음이면 끝난다.
+///
+/// 위로 올라가며 묻지 않는 이유: 작업표시줄 같은 topmost 밴드가 **항상** 우리 위에 있어
+/// "위에 뭐가 있나" 는 늘 참이라 쓸모가 없다. 아래로 내려가는 질문만 뜻이 있다.
+///
+/// 걸음 수에 상한을 둔다 — 열거 중에 목록이 바뀌면 원을 그릴 수 있다.
+#[cfg(target_os = "windows")]
+fn first_window_below(me: isize) -> Option<isize> {
+    use windows_sys::Win32::Foundation::RECT;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetWindow, GetWindowLongPtrW, GetWindowRect, IsWindowVisible, GWL_EXSTYLE, GW_HWNDNEXT,
+        WS_EX_TOOLWINDOW,
+    };
+    let mut h = me as windows_sys::Win32::Foundation::HWND;
+    for _ in 0..64 {
+        // SAFETY: h 는 살아 있는 창 핸들이다.
+        h = unsafe { GetWindow(h, GW_HWNDNEXT) };
+        if h.is_null() {
+            return None;
+        }
+        // SAFETY: 위에서 얻은 유효한 핸들에 대한 조회다.
+        unsafe {
+            if IsWindowVisible(h) == 0 {
+                continue;
+            }
+            let mut r = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            if GetWindowRect(h, &mut r) == 0 || r.right <= r.left || r.bottom <= r.top {
+                continue;
+            }
+        }
+        // **다른 가상 데스크톱의 창을 반드시 걸러야 한다.** 그런 창은 `IsWindowVisible` 이
+        // 참이고 크기도 있어서, 빼먹으면 우리와 바탕화면 사이에 영원히 끼어 있는 것처럼 보인다.
+        // 비용은 걱정 없다 — 열거 전체가 아니라 지나치는 몇 개에만 묻는다.
+        if cloaked(h as isize) != 0 {
+            continue;
+        }
+        // **바탕화면인지 먼저 본다.** Progman 은 `WS_EX_TOOLWINDOW` 를 달고 있어서(실측),
+        // 도구 창을 먼저 걸러내면 정작 찾던 바탕화면을 건너뛰고 목록 끝까지 가 버린다.
+        // 그러면 검사가 늘 "깨졌다" 고 답해 쉬지 않고 헛교정을 돌린다.
+        if class_is_top(h, &["Progman", "WorkerW"]) {
+            return Some(h as isize);
+        }
+        // SAFETY: 살아 있는 창 핸들에 대한 조회다.
+        if unsafe { GetWindowLongPtrW(h, GWL_EXSTYLE) } & (WS_EX_TOOLWINDOW as isize) != 0 {
+            continue;
+        }
+        return Some(h as isize);
+    }
+    None
+}
+
+/// 불변식이 깨졌는가 — 우리 바로 아래가 바탕화면이 아니면 깨진 것이다.
+///
+/// 아래에 아무것도 없다(`None`)면 우리가 맨 밑이라는 뜻이니 바탕화면보다 아래다 — 역시 깨진 것.
+#[cfg(target_os = "windows")]
+fn invariant_broken(me: isize) -> bool {
+    match first_window_below(me) {
+        Some(h) => !class_is_top(h as _, &["Progman", "WorkerW"]),
+        None => true,
+    }
+}
+
+/// 버스트가 끝나는 시각 (프로세스 시작 이후 ms). 이 시각 전까지는 루프가 빠르게 돈다.
+#[cfg(target_os = "windows")]
+static BURST_UNTIL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// 고쳐도 소용없던 횟수 — 다른 바탕화면 위젯 앱과 무한히 싸우지 않으려고 센다.
+#[cfg(target_os = "windows")]
+static INEFFECTIVE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+#[cfg(target_os = "windows")]
+fn now_ms() -> u64 {
+    use windows_sys::Win32::System::SystemInformation::GetTickCount;
+    // SAFETY: 인자 없는 조회.
+    unsafe { GetTickCount() as u64 }
+}
+
+/// 셸이 무언가 했다 — 잠시 빠르게 지켜본다.
+///
+/// Win+D 는 창을 하나씩 최소화하므로 매 단계가 이걸 다시 부른다. 그래서 버스트 길이를 숫자로
+/// 정해 둘 필요가 없다 — 창이 많은 기계에서는 저절로 길어진다.
+#[cfg(target_os = "windows")]
+fn arm_burst() {
+    // 연달아 고쳐도 소용이 없으면(다른 위젯 앱이 같은 자리를 노리는 경우 등) 버스트를 켜지
+    // 않는다. 안 그러면 125Hz 로 서로 밀어내며 CPU 만 태운다.
+    if INEFFECTIVE.load(Ordering::Relaxed) >= 2 {
+        return;
+    }
+    BURST_UNTIL.store(now_ms() + 1000, Ordering::Relaxed);
+}
+
+#[cfg(target_os = "windows")]
+fn bursting() -> bool {
+    now_ms() < BURST_UNTIL.load(Ordering::Relaxed)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn bursting() -> bool {
+    false
+}
+
 /// **불변식: 대시보드는 바탕화면 바로 위, 나머지 앱 아래.**
 ///
 /// z-order 를 다루는 곳은 여기 하나뿐이다. 바탕화면이 우리 위로 올라왔거나 우리 아래에 보통
@@ -560,6 +663,12 @@ fn enforce_z_order(app: &AppHandle) {
     if !fg.is_null() && fg as isize == me {
         return; // 사용자가 쓰는 중이다.
     }
+    // 싼 검사로 먼저 거른다 — 평소에는 여기서 끝나고 `EnumWindows` 는 돌지 않는다.
+    if !invariant_broken(me) {
+        INEFFECTIVE.store(0, Ordering::Relaxed);
+        return;
+    }
+    // 깨졌을 때만 제대로 훑어 바탕화면 창을 찾는다.
     let z = scan_z(me);
     if !needs_fix(&z) {
         return;
@@ -573,24 +682,17 @@ fn enforce_z_order(app: &AppHandle) {
         SetWindowPos(me as _, above_desktop, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
     };
+    // 고쳤는데도 그대로면 누군가 같은 자리를 다투고 있다. 두 번 연속이면 버스트를 접는다.
+    if invariant_broken(me) {
+        INEFFECTIVE.fetch_add(1, Ordering::Relaxed);
+    } else {
+        INEFFECTIVE.store(0, Ordering::Relaxed);
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
 fn enforce_z_order(_app: &AppHandle) {}
 
-/// 바탕화면이 전경인가 — "바탕화면 보기" 가 시작된 신호. Win32 두 번으로 끝난다.
-#[cfg(target_os = "windows")]
-fn desktop_has_foreground() -> bool {
-    use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
-    // SAFETY: 인자 없는 조회.
-    let fg = unsafe { GetForegroundWindow() };
-    !fg.is_null() && class_is_top(fg, &["Progman", "WorkerW"])
-}
-
-#[cfg(not(target_os = "windows"))]
-fn desktop_has_foreground() -> bool {
-    false
-}
 
 
 /// 창 클래스 비교 (열거 콜백 밖에서도 쓰려고 따로 둔다).
@@ -629,10 +731,6 @@ fn cloaked(h: isize) -> u32 {
 }
 
 
-/// 바탕화면이 전경이 됐다 — 뒤따라 올 z-order 변화를 매 틱 지켜보라는 표시.
-#[cfg(target_os = "windows")]
-static NEEDS_WATCH: AtomicBool = AtomicBool::new(false);
-
 /// 메인 창 핸들 — 훅 콜백은 `AppHandle` 을 받을 수 없어 여기서 읽는다.
 #[cfg(target_os = "windows")]
 static ME_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
@@ -645,24 +743,33 @@ static ME_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize:
 /// 이 훅은 **타이핑을 방해하지 않는다** — 전경이 *바뀔 때만* 불리는데, 글자를 치는 동안에는
 /// 전경이 바뀌지 않기 때문이다.
 #[cfg(target_os = "windows")]
-unsafe extern "system" fn on_foreground_changed(
+unsafe extern "system" fn on_shell_event(
     _hook: windows_sys::Win32::UI::Accessibility::HWINEVENTHOOK,
-    _event: u32,
+    event: u32,
     hwnd: windows_sys::Win32::Foundation::HWND,
     id_object: i32,
     _id_child: i32,
     _thread: u32,
     _time: u32,
 ) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MINIMIZESTART,
+    };
     // OBJID_WINDOW(0) 만 본다 — 자식 컨트롤 이벤트는 우리 관심사가 아니다.
     if id_object != 0 {
         return;
     }
-    // 바탕화면이 전경이 되면 "바탕화면 보기" 가 시작된 것이다. **다만 셸은 전경을 먼저 바꾸고
-    // 그 다음에 Progman 을 올린다** (실측: 이 시점에 `desktop_above` 는 아직 false 였다).
-    // 그래서 여기서 한 번 고치는 것만으로는 부족하고, 루프가 이어받아 매 틱 확인한다.
-    if class_is_top(hwnd, &["Progman", "WorkerW"]) {
-        NEEDS_WATCH.store(true, Ordering::Relaxed);
+    // 창이 최소화되기 시작했다 = Win+D 의 한 단계다. 단계마다 버스트가 갱신되므로
+    // 창이 몇 개든 그 행렬이 끝날 때까지 빠른 감시가 이어진다.
+    if event == EVENT_SYSTEM_MINIMIZESTART {
+        arm_burst();
+        return;
+    }
+    // 바탕화면이 전경이 됐다. **셸은 전경을 먼저 바꾸고 그 다음에 Progman 을 올린다**
+    // (실측: 이 시점에 `desktop_above` 는 아직 false 였다). 그래서 여기서 고치지 않고
+    // 버스트만 켠다 — 실제 교정은 뒤따라 오는 변화를 보고 루프가 한다.
+    if event == EVENT_SYSTEM_FOREGROUND && class_is_top(hwnd, &["Progman", "WorkerW"]) {
+        arm_burst();
     }
 }
 
@@ -671,27 +778,28 @@ unsafe extern "system" fn on_foreground_changed(
 pub fn watch_foreground(app: &AppHandle) {
     use windows_sys::Win32::UI::Accessibility::SetWinEventHook;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        EVENT_SYSTEM_FOREGROUND, WINEVENT_OUTOFCONTEXT,
+        EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MINIMIZESTART, WINEVENT_OUTOFCONTEXT,
+        WINEVENT_SKIPOWNPROCESS,
     };
     if let Some(me) = main_hwnd(app) {
         ME_HWND.store(me, Ordering::Relaxed);
     }
+    // FOREGROUND..MINIMIZESTART 를 한 훅으로 받고 콜백에서 가른다. 우리 프로세스의
+    // 이벤트는 건너뛴다 — 위젯을 클릭했을 때 우리가 우리를 깨울 이유가 없다.
     // SAFETY: 콜백은 정적 함수이고, 훅은 프로세스가 끝날 때까지 산다.
     let h = unsafe {
         SetWinEventHook(
             EVENT_SYSTEM_FOREGROUND,
-            EVENT_SYSTEM_FOREGROUND,
+            EVENT_SYSTEM_MINIMIZESTART,
             std::ptr::null_mut(),
-            Some(on_foreground_changed),
+            Some(on_shell_event),
             0,
             0,
-            WINEVENT_OUTOFCONTEXT,
+            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
         )
     };
     if h.is_null() {
-        log::warn!("전경 변화 훅을 걸지 못했습니다 — 폴링 안전망만 동작합니다");
-    } else {
-        log::info!("전경 변화 훅을 걸었습니다");
+        log::warn!("셸 이벤트 훅을 걸지 못했습니다 — 50ms 주기 검사만 동작합니다");
     }
 }
 

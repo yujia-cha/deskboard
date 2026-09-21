@@ -57,6 +57,7 @@ pub fn run() {
             providers::claude_usage::claude_login_finish,
             providers::claude_usage::claude_logout,
             window::set_hit_regions,
+            window::ui_set_text_focus,
             providers::calendar::calendar_list,
             providers::calendar::calendar_upsert,
             providers::calendar::calendar_delete,

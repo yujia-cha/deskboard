@@ -93,6 +93,19 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
 - `alwaysOnBottom` 은 **끈다**(`tauri.conf.json`). 맨 아래로 두면 바탕화면 밑으로 깔린다.
   `exclude_from_show_desktop`(`WS_MINIMIZEBOX` 제거)과 2초마다의 `IsIconic` →
   `SW_SHOWNOACTIVATE` 는 최소화에 대한 보험으로 남겨 둔다.
+- **칠 것이 없는 위젯을 눌렀을 때는 키보드 포커스를 돌려준다** (`window.rs::give_focus_back_if_idle`).
+  대시보드가 전경이 되면 Windows 는 IME 를 이쪽으로 옮기는데, 입력 요소가 없으면 Chromium 이
+  "여기엔 입력이 없다" 고 알려 표시기가 **"IME 를 사용하지 않습니다"** 가 된다. 그대로 남으면
+  한/영 키가 갈 곳을 잃는다 — 시계를 한 번 눌렀을 뿐인데 다른 앱에서 한글이 안 쳐진다.
+  - 프론트엔드(`App.tsx`)가 `focusin`/`focusout` 으로 **입력 요소가 포커스를 쥐었는지**
+    `ui_set_text_focus` 로 알려 준다. 그게 참이면 포커스를 그대로 둔다.
+  - **250ms 기다렸다가 판단한다.** 창이 먼저 활성화되고 웹뷰의 포커스 이벤트는 몇 ms 뒤에 온다 —
+    즉시 판단하면 정당한 입력란 클릭까지 되돌려 버린다.
+    실측: 위젯 클릭 시 82ms 에 전경을 얻었다가 290ms 에 반환, 입력란 클릭 시에는 계속 유지.
+  - **`WS_EX_NOACTIVATE` 로 막는 방식은 쓸 수 없다** (실측). 활성화는 확실히 막히지만 클릭이
+    DOM 포커스도 잡지 못해 텍스트 입력이 통째로 죽는다 — 입력란을 누르고 쳐도 글자가 안 들어갔다.
+  - 돌려줄 대상은 훅이 기억한 "우리가 아니었던 마지막 전경 창"이다. 바탕화면·작업표시줄은
+    제외한다 — 거기로 돌려주면 IME 가 다시 갈 곳을 잃는다.
 - 히트 영역 click-through (`window.rs::start_hit_test`): 잠금 상태에서 커서가 위젯 사각형 밖이면 `set_ignore_cursor_events(true)` → 빈 영역 클릭이 바탕화면 아이콘으로 통과. 프론트가 `set_hit_regions` 로 사각형을 보낸다 (편집 모드·설정 패널 열림 = 비활성).
 - 팝업·메뉴 닫기는 `core/dismiss.ts::useDismiss` (창 안 바깥 클릭 + 히트 영역 밖 클릭 `hit://outside-press` + Esc). 창 `blur` 는 always-on-bottom 창에서 클릭 직후에도 발생하므로 쓰지 않는다. 위젯 밖으로 튀어나오는 팝업은 `setOverlayRect` 로 히트 영역 등록.
 - 내용 자동 맞춤: zoom = `contentScale()`(기본 크기 대비 비율, autoScale 꺼지면 1) × 넘침 보정(`WidgetFrame` 이 body 의 scroll/client 비율을 재서 넘치면 축소). 내용이 잘리지 않음을 보장. 위젯은 배율을 뺀 `size` 를 받는다.

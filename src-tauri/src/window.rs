@@ -3,7 +3,7 @@
 //! 창은 항상 완전 투명(카드만 CSS 로 그림)이고, 선택한 모니터의 작업영역(작업표시줄 제외)을 꽉 채운다.
 
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
@@ -273,6 +273,9 @@ pub fn start_hit_test(app: AppHandle) {
                 tick = tick.wrapping_add(1);
                 let Some(win) = app.get_webview_window("main") else { continue };
 
+                // 칠 것이 없는 위젯을 눌러 얻은 전경이면 원래 창에 돌려준다.
+                give_focus_back_if_idle(&app);
+
                 // z-order 불변식. 매 틱 확인한다 — 검사가 싸고(`invariant_broken`),
                 // 늦게 고칠수록 깜빡임이 길어지기 때문이다.
                 enforce_z_order(&app);
@@ -531,6 +534,81 @@ fn needs_fix(z: &ZScan) -> bool {
     z.desktop != 0 && (z.desktop_above || z.others_below > 0)
 }
 
+/// 웹뷰 안에서 **입력 요소**가 포커스를 쥐고 있는가 (프론트엔드가 알려 준다).
+#[cfg(target_os = "windows")]
+static TEXT_FOCUS: AtomicBool = AtomicBool::new(false);
+/// 우리가 아니었던 마지막 전경 창 — 포커스를 돌려줄 곳.
+#[cfg(target_os = "windows")]
+static PREV_FOREGROUND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+/// 이 시각이 지나면 포커스를 돌려줄지 판단한다. 0 이면 대기 중인 판단이 없다.
+#[cfg(target_os = "windows")]
+static DECIDE_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// 웹뷰의 포커스가 입력 요소로 옮겨졌는지 프론트엔드가 알려 준다.
+///
+/// 이게 켜져 있는 동안에는 전경을 돌려주지 않는다 — 사용자가 글자를 치고 있다는 뜻이다.
+#[tauri::command]
+pub fn ui_set_text_focus(active: bool) {
+    #[cfg(target_os = "windows")]
+    {
+        TEXT_FOCUS.store(active, Ordering::Relaxed);
+        if active {
+            // 입력란을 눌렀다 — 돌려줄 이유가 없어졌다.
+            DECIDE_AT.store(0, Ordering::Relaxed);
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = active;
+}
+
+/// 시계·게이지처럼 **칠 것이 없는** 위젯을 눌러 얻은 전경이면 원래 창에 돌려준다.
+///
+/// **왜 필요한가.** 대시보드가 전경이 되면 Windows 는 IME 를 이쪽으로 옮기는데, 입력 요소가
+/// 없으니 Chromium 이 "여기엔 입력이 없다" 고 알려 표시기가 "IME 를 사용하지 않습니다" 가 된다.
+/// 그 상태로 남으면 한/영 키가 갈 곳을 잃는다 — 사용자가 겪은 증상이다.
+///
+/// **막지 않고 돌려주는 이유.** `WS_EX_NOACTIVATE` 로 활성화를 막아 봤더니 클릭이 DOM 포커스도
+/// 잡지 못해 텍스트 입력이 통째로 죽었다 (실측: 입력란을 누르고 쳐도 글자가 안 들어갔다).
+///
+/// **왜 곧바로 판단하지 않는가.** 창이 먼저 활성화되고 웹뷰의 포커스 이벤트는 몇 ms 뒤에 온다.
+/// 즉시 판단하면 정당한 입력란 클릭까지 되돌려 버린다. 그래서 잠깐 기다렸다가 다시 본다.
+#[cfg(target_os = "windows")]
+fn give_focus_back_if_idle(app: &AppHandle) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, IsWindow, IsWindowVisible, SetForegroundWindow,
+    };
+    let due = DECIDE_AT.load(Ordering::Relaxed);
+    if due == 0 || now_ms() < due {
+        return;
+    }
+    DECIDE_AT.store(0, Ordering::Relaxed);
+
+    if TEXT_FOCUS.load(Ordering::Relaxed) {
+        return; // 사용자가 치고 있다.
+    }
+    let Some(me) = main_hwnd(app) else { return };
+    // SAFETY: 인자 없는 조회.
+    let fg = unsafe { GetForegroundWindow() };
+    if fg.is_null() || fg as isize != me {
+        return; // 이미 다른 창으로 옮겨 갔다.
+    }
+    let prev = PREV_FOREGROUND.load(Ordering::Relaxed);
+    if prev == 0 {
+        return;
+    }
+    // SAFETY: prev 는 훅에서 본 핸들이다. 그 사이 닫혔을 수 있어 살아 있는지 본다.
+    unsafe {
+        if IsWindow(prev as _) == 0 || IsWindowVisible(prev as _) == 0 {
+            return;
+        }
+        // 지금 전경을 쥔 쪽이 우리이므로 이 호출은 허용된다.
+        SetForegroundWindow(prev as _);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn give_focus_back_if_idle(_app: &AppHandle) {}
+
 /// 우리 **바로 아래**에 있는 의미 있는 창 — z-order 불변식을 싸게 확인하는 수단.
 ///
 /// `EnumWindows` 한 바퀴(창마다 클래스 이름 복사 + DWM 왕복)는 20Hz 로 돌리기엔 비싸다.
@@ -765,10 +843,26 @@ unsafe extern "system" fn on_shell_event(
         arm_burst();
         return;
     }
+    if event != EVENT_SYSTEM_FOREGROUND {
+        return;
+    }
+    let me = ME_HWND.load(Ordering::Relaxed);
+    if me != 0 && hwnd as isize == me {
+        // 우리가 전경이 됐다. 입력란을 눌러서인지 아닌지는 아직 모른다 — 웹뷰의 포커스
+        // 이벤트가 몇 ms 뒤에 오기 때문이다. 잠깐 뒤에 다시 보기로 표시만 해 둔다.
+        TEXT_FOCUS.store(false, Ordering::Relaxed);
+        DECIDE_AT.store(now_ms() + 250, Ordering::Relaxed);
+        return;
+    }
+    // 우리가 아닌 창이 전경이 됐다 — 나중에 포커스를 돌려줄 곳으로 기억한다.
+    // 바탕화면은 제외한다: 거기로 돌려주면 IME 가 다시 갈 곳을 잃는다.
+    if !hwnd.is_null() && !class_is_top(hwnd, &["Progman", "WorkerW", "Shell_TrayWnd"]) {
+        PREV_FOREGROUND.store(hwnd as isize, Ordering::Relaxed);
+    }
     // 바탕화면이 전경이 됐다. **셸은 전경을 먼저 바꾸고 그 다음에 Progman 을 올린다**
     // (실측: 이 시점에 `desktop_above` 는 아직 false 였다). 그래서 여기서 고치지 않고
     // 버스트만 켠다 — 실제 교정은 뒤따라 오는 변화를 보고 루프가 한다.
-    if event == EVENT_SYSTEM_FOREGROUND && class_is_top(hwnd, &["Progman", "WorkerW"]) {
+    if class_is_top(hwnd, &["Progman", "WorkerW"]) {
         arm_burst();
     }
 }
@@ -779,13 +873,13 @@ pub fn watch_foreground(app: &AppHandle) {
     use windows_sys::Win32::UI::Accessibility::SetWinEventHook;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MINIMIZESTART, WINEVENT_OUTOFCONTEXT,
-        WINEVENT_SKIPOWNPROCESS,
     };
     if let Some(me) = main_hwnd(app) {
         ME_HWND.store(me, Ordering::Relaxed);
     }
-    // FOREGROUND..MINIMIZESTART 를 한 훅으로 받고 콜백에서 가른다. 우리 프로세스의
-    // 이벤트는 건너뛴다 — 위젯을 클릭했을 때 우리가 우리를 깨울 이유가 없다.
+    // FOREGROUND..MINIMIZESTART 를 한 훅으로 받고 콜백에서 가른다. **우리 프로세스의
+    // 이벤트도 받아야 한다** — 위젯을 눌러 우리가 전경이 되는 순간을 여기서 알아야
+    // 포커스를 돌려줄지 판단할 수 있다.
     // SAFETY: 콜백은 정적 함수이고, 훅은 프로세스가 끝날 때까지 산다.
     let h = unsafe {
         SetWinEventHook(
@@ -795,7 +889,7 @@ pub fn watch_foreground(app: &AppHandle) {
             Some(on_shell_event),
             0,
             0,
-            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
+            WINEVENT_OUTOFCONTEXT,
         )
     };
     if h.is_null() {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettings } from "./core/settings";
-import { useEvent } from "./core/ipc";
+import { invokeInOrder, useEvent } from "./core/ipc";
 import { useWallpaper } from "./core/wallpaper";
 import { Canvas } from "./components/Canvas";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -20,6 +20,25 @@ export default function App() {
   const setLocked = useSettings((s) => s.setLocked);
   const toggleTheme = useSettings((s) => s.toggleTheme);
   const openSettings = useSettings((s) => s.openSettings);
+
+  // 웹뷰 안에서 입력 요소가 포커스를 쥐었는지 백엔드에 알린다.
+  //
+  // 시계·게이지처럼 칠 것이 없는 위젯을 눌렀을 때까지 대시보드가 키보드 포커스를 쥐고 있으면
+  // Windows 의 IME 가 "사용하지 않음" 으로 넘어가 한/영 키가 갈 곳을 잃는다. 백엔드가 그때만
+  // 원래 창에 포커스를 돌려줄 수 있게, 여기서 진짜 입력 여부를 알려 준다.
+  useEffect(() => {
+    const editable = (el: Element | null) =>
+      !!el && (el.matches("input, textarea, select") || (el as HTMLElement).isContentEditable);
+    // focusout 은 새 포커스가 정해지기 **전에** 오므로 한 틱 뒤에 읽는다.
+    const report = () => setTimeout(
+      () => invokeInOrder("ui_set_text_focus", { active: editable(document.activeElement) }), 0);
+    document.addEventListener("focusin", report);
+    document.addEventListener("focusout", report);
+    return () => {
+      document.removeEventListener("focusin", report);
+      document.removeEventListener("focusout", report);
+    };
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 

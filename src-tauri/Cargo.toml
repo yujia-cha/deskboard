@@ -62,6 +62,8 @@ windows-sys = { version = "0.60", features = [
   "Win32_System_Threading",
   # DWM cloaking — 가상 데스크톱/셸이 창을 "보이지만 가려진" 상태로 만들었는지 본다
   "Win32_Graphics_Dwm",
+  # SetWinEventHook — 전경 창이 바뀌는 **순간**을 잡는다. 50ms 폴링으로는 늦다
+  "Win32_UI_Accessibility",
 ] }
 windows = { version = "0.58", features = [
   "Win32_UI_Shell",

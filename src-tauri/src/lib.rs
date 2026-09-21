@@ -36,6 +36,8 @@ pub fn run() {
             // Win+D(바탕화면 보기)로 대시보드가 같이 숨지 않게 한다.
             window::exclude_from_show_desktop(app.handle());
             window::start_hit_test(app.handle().clone());
+            // 전경이 우리에게 잘못 넘어오는 순간을 잡는다 (메시지 루프가 있는 이 스레드에서).
+            window::watch_foreground(app.handle());
             autostart::sync(app.handle());
 
             for provider in providers::all() {

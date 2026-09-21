@@ -309,8 +309,13 @@ pub fn start_hit_test(app: AppHandle) {
                 // 히트 영역 밖(바탕화면·다른 앱) 클릭 알림 — 팝업 닫기용.
                 // 창 blur 는 always-on-bottom 창에서 클릭 직후에도 발생해 쓸 수 없다.
                 let pressed = mouse_pressed();
-                if pressed && !was_pressed && want_ignore {
-                    let _ = app.emit("hit://outside-press", ());
+                if pressed && !was_pressed {
+                    if want_ignore {
+                        let _ = app.emit("hit://outside-press", ());
+                    } else {
+                        // 위젯을 눌렀다 — 곧 따라올 활성화는 정당하다.
+                        note_widget_press();
+                    }
                 }
                 was_pressed = pressed;
             }
@@ -573,17 +578,13 @@ static WARNED: AtomicBool = AtomicBool::new(false);
 /// 소유자는 `GWLP_HWNDPARENT` 로 바꾼다 (이름과 달리 부모가 아니라 소유자다).
 #[cfg(target_os = "windows")]
 pub fn own_by_desktop(app: &AppHandle) -> bool {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        SetWindowLongPtrW, GWLP_HWNDPARENT,
-    };
     let Some(me) = main_hwnd(app) else { return false };
     let desktop = find_desktop_window();
     if desktop == 0 {
         log::warn!("바탕화면 창을 찾지 못했습니다");
         return false;
     }
-    // SAFETY: me 는 살아 있는 최상위 창이고 desktop 도 살아 있는 창이다.
-    unsafe { SetWindowLongPtrW(me as _, GWLP_HWNDPARENT, desktop) };
+    set_owner(me, desktop);
     let ok = desktop_owner(app) == desktop;
     if ok {
         log::info!("바탕화면을 소유자로 지정했습니다 (owner=0x{desktop:X})");
@@ -601,11 +602,17 @@ pub fn own_by_desktop(_app: &AppHandle) -> bool {
 /// 소유자 지정을 푼다 (주 모니터가 아닌 곳으로 옮길 때).
 #[cfg(target_os = "windows")]
 fn disown_desktop(app: &AppHandle) {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowLongPtrW, GWLP_HWNDPARENT};
     let Some(me) = main_hwnd(app) else { return };
-    // SAFETY: 살아 있는 창 핸들이다. 0 을 주면 소유자가 없어진다.
-    unsafe { SetWindowLongPtrW(me as _, GWLP_HWNDPARENT, 0) };
+    set_owner(me, 0);
     log::info!("바탕화면 소유자 지정을 풀었습니다");
+}
+
+/// 소유자를 세운다(0 이면 없앤다). 훅 콜백에서도 불리므로 `AppHandle` 을 받지 않는다.
+#[cfg(target_os = "windows")]
+fn set_owner(me: isize, owner: isize) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowLongPtrW, GWLP_HWNDPARENT};
+    // SAFETY: me 는 살아 있는 최상위 창이고, owner 는 0 이거나 살아 있는 창이다.
+    unsafe { SetWindowLongPtrW(me as _, GWLP_HWNDPARENT, owner) };
 }
 
 /// 아이콘(`SHELLDLL_DefView`)을 품은 바탕화면 창. 없으면 0.
@@ -723,6 +730,16 @@ fn sink_below_apps(app: &AppHandle) -> bool {
     // SAFETY: 인자 없는 조회.
     let fg = unsafe { GetForegroundWindow() };
     let fg_desktop = !fg.is_null() && class_is_top(fg, &["Progman", "WorkerW"]);
+    // 훅이 전경을 돌려줄 대상을 알 수 있게 알려 둔다.
+    if z.desktop != 0 {
+        DESKTOP_HWND.store(z.desktop, Ordering::Relaxed);
+    }
+    // 훅이 걸리지 않았거나 이벤트를 놓쳤을 때를 위한 안전망. 훅과 같은 규칙을 쓴다 —
+    // "바탕화면 보기 중이면 무조건 뺏는다"로 했더니 그때 위젯을 눌러도 포커스가 오지 않았다.
+    yield_foreground_if_unwanted(false);
+    // 위젯 클릭으로 생긴 오염을 지운다 — 다른 창을 한 번 누르면 저절로 풀리게 한다.
+    clear_last_active_popup(app, z.desktop);
+
     if fg_desktop && z.visible_apps == 0 {
         return true;
     }
@@ -741,6 +758,183 @@ fn sink_below_apps(app: &AppHandle) -> bool {
 fn sink_below_apps(_app: &AppHandle) -> bool {
     false
 }
+
+/// 위젯을 누른 순간을 적어 둔다 — 곧 따라올 활성화를 정당한 것으로 인정하려고.
+#[cfg(target_os = "windows")]
+fn note_widget_press() {
+    WIDGET_PRESS_MS.store(now_ms().max(1), Ordering::Relaxed);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn note_widget_press() {}
+
+/// 마지막으로 위젯을 누른 시각 (프로세스 시작 이후 ms). 0 이면 없음.
+#[cfg(target_os = "windows")]
+static WIDGET_PRESS_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// 메인 창 핸들 — 훅 콜백은 `AppHandle` 을 받을 수 없어 여기서 읽는다.
+#[cfg(target_os = "windows")]
+static ME_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+/// 마지막으로 확인한 바탕화면 창 — 전경을 돌려줄 대상.
+#[cfg(target_os = "windows")]
+static DESKTOP_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
+#[cfg(target_os = "windows")]
+fn now_ms() -> u64 {
+    use windows_sys::Win32::System::SystemInformation::GetTickCount;
+    // SAFETY: 인자 없는 조회.
+    unsafe { GetTickCount() as u64 }
+}
+
+/// 사용자가 방금 위젯을 눌러서 얻은 전경인가 — 그렇다면 빼앗으면 안 된다.
+///
+/// 플래그가 아니라 **시각**으로 판정한다. 클릭으로 인한 활성화는 누른 직후에 오고, 소유자
+/// 리다이렉트로 인한 활성화는 그렇지 않다. 폴링으로 갱신하는 플래그를 쓰면 최대 200ms 늦어
+/// 바로 그 순간에 오판한다.
+#[cfg(target_os = "windows")]
+fn just_pressed_a_widget() -> bool {
+    let t = WIDGET_PRESS_MS.load(Ordering::Relaxed);
+    t != 0 && now_ms().saturating_sub(t) < 1000
+}
+
+/// 원치 않게 넘어온 전경(foreground)을 바탕화면에 돌려준다.
+///
+/// **왜 필요한가.** 소유 관계는 z-order 를 고쳐 주지만 활성화도 함께 끌고 온다 — Windows 는
+/// 소유자가 활성화되면 그 그룹의 **마지막 활성 팝업**으로 활성화를 넘긴다. Win+D 를 누르면
+/// 셸이 Progman 을 활성화하고, 그 활성화가 우리에게 떨어진다.
+///
+/// 그러면 셸의 "바탕화면 보기" **방향 판정**이 멈춘다. 실측: `MinimizeAll()` 과
+/// `UndoMinimizeALL()` 은 멀쩡히 동작하는데 `ToggleDesktop()` 만 계속 복원 방향으로 붙잡혀
+/// 두 번째 Win+D 부터 아무 일도 일어나지 않았다 (4회 중 1회만 반전). 한/영 전환이 죽는 것도
+/// 같은 뿌리다 — 전경이 우리인데 포커스를 가진 컨트롤이 없다(`focus=0x0`).
+///
+/// **막을 수는 없다.** `WS_EX_NOACTIVATE` 를 켜도 전경은 그대로 넘어왔다 (실측). 그 비트는
+/// *클릭* 활성화 정책이라 소유자 리다이렉트를 막지 못한다. 그래서 막는 대신 **되돌려준다.**
+/// 우리가 전경을 쥐고 있을 때는 `SetForegroundWindow` 가 허용되므로 이 호출은 성공한다.
+#[cfg(target_os = "windows")]
+fn yield_foreground_if_unwanted(force: bool) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, SetForegroundWindow};
+    let me = ME_HWND.load(Ordering::Relaxed);
+    let desktop = DESKTOP_HWND.load(Ordering::Relaxed);
+    if me == 0 || desktop == 0 {
+        return;
+    }
+    // SAFETY: 인자 없는 조회.
+    let fg = unsafe { GetForegroundWindow() };
+    if fg.is_null() || fg as isize != me {
+        return;
+    }
+    // `force` 는 "바탕화면 보기 중" 이라는 뜻이다. 그때는 사용자가 방금 위젯을 눌렀더라도
+    // 전경을 쥐고 있으면 안 된다 — 그 상태가 셸의 토글 방향 판정을 멈춘다.
+    if !force && just_pressed_a_widget() {
+        return; // 사용자가 눌러서 온 전경이다 — 그대로 둔다.
+    }
+    // SAFETY: desktop 은 열거에서 얻은 살아 있는 창이다.
+    let ok = unsafe { SetForegroundWindow(desktop as _) };
+    log::debug!("전경을 바탕화면에 돌려줌 (force={force}) -> {}", ok != 0);
+}
+
+/// 소유자에 남은 "마지막 활성 팝업" 등록을 지운다 — 오염을 스스로 풀리게 한다.
+///
+/// **이것이 Win+D 가 다시 먹지 않던 원인이다.** 위젯을 클릭하면 우리 창이 정당하게 활성화되는데,
+/// Progman 이 소유자이므로 그 순간 `GetLastActivePopup(Progman)` 이 우리가 된다. 그 등록이
+/// 남아 있는 한 셸의 "바탕화면 보기" **토글 방향 판정**이 멈춘다.
+///
+/// 실측이 깔끔하게 갈렸다 — 같은 스크립트를 아홉 번 돌렸을 때, 클릭이 위젯을 빗나간 여덟 번은
+/// 6/6 통과했고 **클릭이 실제로 위젯을 맞혀 `lastActivePopup` 이 우리가 된 한 번만** 2/6 로 멈췄다.
+/// 전경을 돌려주는 것만으로는 부족하다 — 등록 자체가 남는다.
+///
+/// 소유를 풀었다 다시 걸면 등록이 지워지고 그 직후 Win+D 가 되살아난다 (실측). 우리가 전경일 때
+/// 하면 포커스를 빼앗으므로 **전경이 아닐 때만** 한다 — 즉 사용자가 위젯에서 손을 뗀 뒤다.
+/// 그래서 오염은 다른 창을 한 번 클릭하는 순간 저절로 풀린다.
+#[cfg(target_os = "windows")]
+fn clear_last_active_popup(app: &AppHandle, desktop: isize) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetLastActivePopup,
+    };
+    if desktop == 0 {
+        return;
+    }
+    let Some(me) = main_hwnd(app) else { return };
+    // SAFETY: desktop 은 살아 있는 창 핸들이고, 나머지는 인자 없는 조회다.
+    unsafe {
+        if GetLastActivePopup(desktop as _) as isize != me {
+            return;
+        }
+        if GetForegroundWindow() as isize == me {
+            return; // 아직 사용자가 쓰는 중이다 — 건드리면 포커스를 빼앗는다.
+        }
+    }
+    set_owner(me, 0);
+    set_owner(me, desktop);
+    log::debug!("소유자의 '마지막 활성 팝업' 등록을 지웠습니다");
+}
+
+#[cfg(not(target_os = "windows"))]
+fn clear_last_active_popup(_app: &AppHandle, _desktop: isize) {}
+
+/// 전경 창이 바뀌는 **순간**을 잡는 훅.
+///
+/// 폴링으로는 늦다 — 실측에서 우리가 200ms 남짓 전경을 쥐는 사이 셸이 그것을 읽어 토글 방향
+/// 판정이 멈췄다(6회 중 2회만 반전). `EVENT_SYSTEM_FOREGROUND` 는 ms 단위로 온다.
+///
+/// 이 훅은 **타이핑을 방해하지 않는다** — 전경이 *바뀔 때만* 불리는데, 글자를 치는 동안에는
+/// 전경이 바뀌지 않기 때문이다.
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn on_foreground_changed(
+    _hook: windows_sys::Win32::UI::Accessibility::HWINEVENTHOOK,
+    _event: u32,
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    id_object: i32,
+    _id_child: i32,
+    _thread: u32,
+    _time: u32,
+) {
+    // OBJID_WINDOW(0) 만 본다 — 자식 컨트롤 이벤트는 우리 관심사가 아니다.
+    if id_object != 0 {
+        return;
+    }
+    if hwnd as isize != ME_HWND.load(Ordering::Relaxed) {
+        return;
+    }
+    // 요청하지 않은 활성화(소유자 리다이렉트)면 전경을 돌려준다. 사용자가 위젯을 눌러서
+    // 온 것이면 그대로 둔다 — 그때는 이미 소유가 풀려 있어 오염되지 않는다.
+    yield_foreground_if_unwanted(false);
+}
+
+/// 시작 시 한 번. 메시지 루프가 있는 스레드에서 불러야 한다 (`lib.rs` 의 setup).
+#[cfg(target_os = "windows")]
+pub fn watch_foreground(app: &AppHandle) {
+    use windows_sys::Win32::UI::Accessibility::SetWinEventHook;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        EVENT_SYSTEM_FOREGROUND, WINEVENT_OUTOFCONTEXT,
+    };
+    if let Some(me) = main_hwnd(app) {
+        ME_HWND.store(me, Ordering::Relaxed);
+    }
+    // SAFETY: 콜백은 정적 함수이고, 훅은 프로세스가 끝날 때까지 산다.
+    let h = unsafe {
+        SetWinEventHook(
+            EVENT_SYSTEM_FOREGROUND,
+            EVENT_SYSTEM_FOREGROUND,
+            std::ptr::null_mut(),
+            Some(on_foreground_changed),
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT,
+        )
+    };
+    if h.is_null() {
+        log::warn!("전경 변화 훅을 걸지 못했습니다 — 폴링 안전망만 동작합니다");
+    } else {
+        log::info!("전경 변화 훅을 걸었습니다");
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn watch_foreground(_app: &AppHandle) {}
+
+#[cfg(not(target_os = "windows"))]
+fn yield_foreground_if_unwanted(_force: bool) {}
 
 /// "바탕화면 보기"(Win+D) 동안 위젯이 묻히지 않게 한다.
 ///

@@ -11,8 +11,8 @@ jobs:
   check:
     runs-on: windows-latest # Windows 전용 코드(win32 API)가 있어 여기서 돌려야 뜻이 있다
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm

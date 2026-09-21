@@ -124,8 +124,47 @@ npm run tauri build
 - `installMode: currentUser` — 관리자 권한 없이 계정에만 설치된다.
   자동 시작이 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 을 쓰므로 이쪽이 맞다.
 - 업데이트 설치는 `installMode: passive` — 진행 막대만 뜨고 사용자가 누를 것이 없다.
-- 코드 서명(SmartScreen)은 하지 않는다 → 처음 실행 시 경고. [추가 정보] → [실행].
-  업데이터의 서명은 이것과 다른 것이다 (배포본이 우리 것인지 앱이 확인하는 용도).
+- 코드 서명(Authenticode)은 **하지 않는다** — 아래 "SmartScreen 경고" 참고.
+
+## SmartScreen 경고 ("알 수 없는 게시자")
+
+설치 파일에 **Authenticode 서명이 없어서** 뜬다. Windows 는 누가 만든 파일인지 확인할 방법이
+없으면 그렇게 말한다. [추가 정보] → [실행] 으로 넘어갈 수 있다.
+
+**업데이터 경로에서는 보통 안 뜬다.** SmartScreen 은 브라우저가 파일에 붙이는 Mark of the Web
+을 보고 동작하는데, 업데이터가 직접 내려받은 파일에는 그게 붙지 않는다. 경고를 보게 되는 것은
+GitHub 릴리스에서 브라우저로 직접 받아 실행할 때다.
+
+**업데이터 서명(`.sig`)과는 다른 것이다.** 그쪽은 "이 릴리스가 내 개인 키로 서명됐나"를 **앱이**
+확인하는 장치라, Windows 는 그것을 보지 않는다. 둘 다 있어야 각자의 일을 한다.
+
+### 없애려면
+
+유료 인증서가 필요하다. 공짜로 없애는 방법은 없다 (자체 서명 인증서는 그것을 신뢰할 루트로
+등록한 PC 에서만 통한다).
+
+| 방법 | 비용 | 효과 |
+|---|---|---|
+| Azure Trusted Signing | 월 $10 안팎 | 신원 확인 필요. 구독 계정·리전 조건이 있다 |
+| OV 인증서 | 연 10~30만원 | 게시자 이름은 뜨지만 평판이 쌓이기 전에는 경고가 남을 수 있다 |
+| EV 인증서 | 연 30~50만원 | 하드웨어 토큰. SmartScreen 평판을 바로 얻는다 |
+
+### 인증서가 생겼을 때
+
+**워크플로는 고치지 않는다.** 시크릿 두 개만 넣으면 `release.yml` 의 "코드 서명 인증서 준비"
+스텝이 알아서 인증서를 러너에 등록하고 thumbprint 를 `--config` 로 tauri 에 넘긴다.
+
+| 시크릿 | 값 |
+|---|---|
+| `WINDOWS_CERTIFICATE` | `.pfx` 파일을 base64 로 인코딩한 문자열 |
+| `WINDOWS_CERTIFICATE_PASSWORD` | 그 `.pfx` 의 비밀번호 |
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("cert.pfx")) | Set-Clipboard
+```
+
+시크릿이 없으면 그 스텝은 빈 설정 조각(`{}`)을 쓰고 지나가므로, 지금처럼 서명 없이 빌드된다.
+타임스탬프 서버와 해시 알고리즘은 `tauri.conf.json` 의 `bundle.windows` 에 이미 적혀 있다.
 
 ## 새 PC 에서의 점검 목록
 

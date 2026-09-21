@@ -25,9 +25,9 @@ jobs:
       contents: write # 릴리스를 만들고 파일을 붙이는 데 필요하다
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -66,12 +66,46 @@ jobs:
       - run: npm test
       - run: cargo test --manifest-path src-tauri/Cargo.toml
 
+      # --- Windows 코드 서명 (인증서가 있을 때만) ---
+      #
+      # 지금은 인증서가 없다 → 설치 파일에 Authenticode 서명이 없고, 브라우저로 받아 실행하면
+      # SmartScreen 이 "알 수 없는 게시자" 를 띄운다. (업데이터가 내려받는 경로에는 Mark of the
+      # Web 이 안 붙어서 그쪽에서는 보통 뜨지 않는다.)
+      #
+      # 인증서가 생기면 시크릿 두 개만 넣으면 된다 — 이 파일은 고치지 않는다:
+      #   WINDOWS_CERTIFICATE           .pfx 파일을 base64 로 인코딩한 문자열
+      #   WINDOWS_CERTIFICATE_PASSWORD  그 .pfx 의 비밀번호
+      # base64 만들기: [Convert]::ToBase64String([IO.File]::ReadAllBytes("cert.pfx")) | Set-Clipboard
+      - name: 코드 서명 인증서 준비
+        shell: pwsh
+        env:
+          CERT: ${{ secrets.WINDOWS_CERTIFICATE }}
+          CERT_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          # tauri 에 넘길 설정 조각. 인증서가 없으면 빈 객체라 아무것도 덮어쓰지 않는다.
+          $patch = Join-Path $env:RUNNER_TEMP "sign.json"
+          if (-not $env:CERT) {
+            Write-Host "인증서 시크릿이 없습니다 - 서명 없이 빌드합니다."
+            '{}' | Set-Content $patch -Encoding utf8
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "cert.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT))
+          $pw = ConvertTo-SecureString -String $env:CERT_PASSWORD -Force -AsPlainText
+          $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $pw
+          Remove-Item $pfx -Force
+          Write-Host "인증서 등록: $($cert.Subject)"
+          @{ bundle = @{ windows = @{ certificateThumbprint = $cert.Thumbprint } } } |
+            ConvertTo-Json -Depth 5 | Set-Content $patch -Encoding utf8
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          # 서명 설정 조각을 항상 넘긴다 — 인증서가 없으면 `{}` 라 아무 효과가 없다.
+          args: --config ${{ runner.temp }}/sign.json
           tagName: ${{ github.ref_name }}
           releaseName: deskboard ${{ github.ref_name }}
           releaseBody: |

@@ -55,49 +55,27 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
   `data-card-style`(glass|minimal|borderless|none).
   카드 불투명도·블러 강도·모서리 반경은 설정 슬라이더 → `--surface-alpha`/`--radius`.
 - 창은 선택 모니터의 작업영역(`GetMonitorInfoW.rcWork`) 전체를 덮는다 (`window.rs::fit_to_work_area`, 2초마다 변화 감지). 위젯 좌표 = 작업영역 좌표.
-- **바탕화면 창을 이 창의 소유자(owner)로 지정한다** (`window.rs::own_by_desktop`,
-  `GWLP_HWNDPARENT` — 이름과 달리 부모가 아니라 소유자다). 시스템이 *소유된 창을 항상 소유자
-  위에* 두므로, "바탕화면 보기"(Win+D)가 Progman 을 끌어올리면 우리도 같이 올라간다.
-  쫓아가는 게 아니라 시스템이 지켜 주는 불변식이고, 창은 **최상위로 남아** DWM 픽셀 단위
-  알파 합성을 계속 받는다 (= 투명함·아이콘 표시·click-through 가 그대로다).
-  - **내려오는 건 우리가 해야 한다** (`sink_below_apps`). 소유자가 올라갈 때는 함께 올려
-    주지만 내려갈 때는 같이 내려 주지 않아, 그냥 두면 "바탕화면 보기"를 끝낸 뒤 대시보드가
-    앱들 위에 얹힌 채 남는다. 우리 아래에 보통 창이 있으면 바탕화면 바로 위로 되돌린다.
-    싼 사전 검사(`z_might_be_wrong`)는 전경이 보통 앱이면 못 잡으므로, "직전 틱이 바탕화면
-    보기였는지"를 기억해 끝난 직후 한 번 더 확인한다.
-  - **주 모니터일 때만 잡는다** (`ensure_owned`, 2초마다). 보조 모니터를 캔버스로 쓰면 소유
-    관계가 득이 없어 풀고, 예전 z-order 방식(`keep_above_desktop`)으로 돈다.
-  - **탐색기가 재시작되면 소유자가 죽는다.** `ensure_owned` 가 다시 잡는다.
-  - **활성화까지 함께 끌고 온다 — 이것이 남은 문제의 뿌리다.** Windows 는 소유자가 활성화되면
-    그 그룹의 **마지막 활성 팝업**(`GetLastActivePopup`)으로 활성화를 넘긴다. Win+D 를 누르면
-    셸이 Progman 을 활성화하고 그 활성화가 우리에게 떨어진다. 그러면 셸의 "바탕화면 보기"
-    **토글 방향 판정**이 멈춘다 — 실측: `MinimizeAll()`·`UndoMinimizeALL()` 은 멀쩡한데
-    `ToggleDesktop()` 만 복원 방향으로 붙잡힌다. 한/영이 죽는 것도 같은 뿌리(전경은 우리인데
-    `focus=0x0`)다.
-    - **`WS_EX_NOACTIVATE` 로는 못 막는다** (실측). 그 비트는 *클릭* 활성화 정책이라
-      소유자 리다이렉트보다 아래에서 일어나는 일을 막지 못한다.
-    - 그래서 **돌려준다**: `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)` 로 전경이 우리에게
-      넘어오는 **순간**을 잡아(폴링은 200ms 늦어 그 사이 셸이 읽어 버린다) 요청하지 않은
-      활성화면 `SetForegroundWindow(바탕화면)` 로 되돌린다. 우리가 전경을 쥔 상태라 허용된다.
-      사용자가 방금(1초 이내) 위젯을 눌러 생긴 활성화는 빼앗지 않는다 — 메모·일정 입력이 죽는다.
-    - **위젯을 클릭해 정당하게 활성화되면** 그 순간 우리가 `lastActivePopup` 으로 등록되고
-      오염이 남는다. 전경을 돌려주는 것만으로는 안 지워진다. 소유를 풀었다 다시 걸면 지워지므로
-      (`clear_last_active_popup`) 전경이 아닐 때 그렇게 한다 — 다른 창을 한 번 누르면 풀린다.
-    - **아직 남은 구멍**: 위젯을 클릭한 뒤 다른 창을 누르지 않고 바로 Win+D 를 누르면 그 한 번은
-      먹지 않는다. 전경을 쥔 동안에는 오염을 지울 수 없기 때문이다(지우면 포커스를 빼앗는다).
-  - **`visible_apps == 0` 을 "바탕화면 보기" 판정에 쓰지 말 것.** Show Desktop 이 끝내 최소화하지
-    못하는 창이 하나라도 있으면(실측: 특정 Firefox 창) 이 조건은 영영 거짓이 된다. 이걸 소유
-    여부의 조건으로 넣었다가 소유가 통째로 풀려 원래 버그가 되살아났다.
-  - 이 작업의 실험은 `winplusd-owner` 브랜치에 있다. 측정 도구는 세션 스크래치패드의
-    `showdesktop.ps1`(Win+D 를 `SendInput` 으로 합성하고 토글이 실제로 반전됐는지 센다).
-  탈락한 시도 넷은 `window.rs` 의 "Win+D 에서 살아남기" 머리말에 실측과 함께 남겨 두었다 —
-  `WS_MINIMIZEBOX` 제거(이미 적용돼 있어 무의미) · z-order 되돌리기(셸이 계속 다시 올려서 패배) ·
-  `SetWindowPos(HWND_TOPMOST)`(성공을 반환하면서도 안 먹음) ·
-  **`SetParent` 로 자식 만들기**(Win+D 는 풀리지만 자식 창은 DWM 알파 합성을 못 받아
-  `WS_CLIPSIBLINGS` 사각형 클리핑으로 내려앉고, 우리 창 사각형 안의 바탕화면 아이콘이
-  통째로 사라진다 — 투명함과 맞바꾸는 셈이라 버렸다).
+- **z-order 는 불변식 하나로 관리한다 — 바탕화면 바로 위, 나머지 앱 아래**
+  (`window.rs::enforce_z_order`). Win+D 가 Progman 을 끌어올리면 다시 그 위로 돌아간다.
+  창은 평범한 최상위 창이라 DWM 알파 합성·포커스·IME 가 모두 정상이다.
+  - **`SetWindowPos` 의 두 번째 인자를 조심할 것.** `hWndInsertAfter` 는 "positioned window
+    **앞에 올** 창"이다 — 우리는 그 창 **바로 아래**로 간다. 그래서 `SetWindowPos(me, 바탕화면)`
+    은 바탕화면 *밑에* 묻는다. 이걸 "바로 위로 올린다"고 착각한 채 오래 썼고, **올리는 쪽이
+    한 번도 작동하지 않은 진짜 이유**가 이것이었다. 바로 위로 가려면
+    `GetWindow(바탕화면, GW_HWNDPREV)` 를 대상으로 준다.
+  - 훅(`SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`)은 **신호로만** 쓴다. 셸은 전경을 먼저 바꾸고
+    **그 다음에** Progman 을 올리므로(실측: 훅이 뜬 시점에 `desktop_above` 는 아직 false),
+    훅에서 한 번 고쳐 봐야 곧 덮인다. 훅은 "지켜보라"는 표시만 세우고 루프가 매 틱 교정한다.
+  - **전경이 우리일 때는 내리지 않는다** — 위젯 클릭으로 얻은 포커스와 싸우지 않기 위해서다.
+    그동안 잠깐 앱 위로 올라올 수 있다(허용). 아예 못 올라오게 하는 건 남은 일.
+  탈락한 시도들은 `window.rs` 의 "Win+D 에서 살아남기" 머리말에 실측과 함께 남겨 두었다 —
+  `WS_MINIMIZEBOX` 제거(이미 적용돼 있어 무의미) · topmost(이 창에서 `WS_EX_TOPMOST` 가 안 켜짐) ·
+  `SetParent`(자식 창은 DWM 알파 합성을 못 받아 아이콘이 사라짐) ·
+  **소유자(owner) 지정**(Win+D 는 풀리지만 활성화까지 끌고 와 셸의 `ToggleDesktop` 방향 판정이
+  멈추고 한/영이 죽는다) · **`visible_apps == 0` 으로 "바탕화면 보기" 판정하기**(끝내 최소화되지
+  않는 창이 하나만 있어도 영영 거짓. 지금 설계는 이 판정을 **아예 하지 않는다** — 불변식이
+  깨졌는지만 묻는다).
 - `alwaysOnBottom` 은 **끈다**(`tauri.conf.json`). 맨 아래로 두면 바탕화면 밑으로 깔린다.
-  원하는 자리는 "맨 아래"가 아니라 **"바탕화면 바로 위, 나머지 앱 아래"** 다.
   `exclude_from_show_desktop`(`WS_MINIMIZEBOX` 제거)과 2초마다의 `IsIconic` →
   `SW_SHOWNOACTIVATE` 는 최소화에 대한 보험으로 남겨 둔다.
 - 히트 영역 click-through (`window.rs::start_hit_test`): 잠금 상태에서 커서가 위젯 사각형 밖이면 `set_ignore_cursor_events(true)` → 빈 영역 클릭이 바탕화면 아이콘으로 통과. 프론트가 `set_hit_regions` 로 사각형을 보낸다 (편집 모드·설정 패널 열림 = 비활성).

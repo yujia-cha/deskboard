@@ -83,6 +83,33 @@ pub fn categorize(
         .unwrap_or(Category::Other)
 }
 
+/// 게임 설치 폴더 안에서 실행됐는가. 처음 보는 프로그램을 자동으로 게임 규칙에 넣을지
+/// 판단하는 데만 쓴다 — 경로 자체는 저장하지 않는다.
+pub fn looks_like_game_path(path: &str) -> bool {
+    let p = path.to_ascii_lowercase().replace('/', "\\");
+    const MARKERS: [&str; 9] = [
+        "\\steamapps\\common\\",
+        "\\epic games\\",
+        "\\gog galaxy\\games\\",
+        "\\riot games\\",
+        "\\xboxgames\\",
+        "\\ubisoft game launcher\\games\\",
+        "\\ea games\\",
+        "\\battle.net\\",
+        "\\nexon\\",
+    ];
+    MARKERS.iter().any(|m| p.contains(m))
+}
+
+/// 게임 설치 폴더 안에 있어도 자동 분류에서 제외할 실행 파일 (정규화된 이름).
+/// Wallpaper Engine 은 `steamapps\common` 안에 있지만 배경화면 프로그램이지 게임이 아니다.
+const AUTO_GAME_EXCLUDE: [&str; 4] = ["wallpaper32", "wallpaper64", "ui32", "ui64"];
+
+/// 경로로 게임을 자동 태깅할 때, 이 실행 파일은 예외로 둘지.
+pub fn is_auto_game_excluded(normalized_exe: &str) -> bool {
+    AUTO_GAME_EXCLUDE.contains(&normalized_exe)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,5 +192,38 @@ mod tests {
         let s = Seed::from_json(r#"{"game":["a.exe"]}"#).unwrap();
         assert_eq!(s.to_map().len(), 1);
         assert_eq!(Seed::from_json("{}").unwrap().to_map().len(), 0);
+    }
+
+    #[test]
+    fn recognizes_known_game_install_folders() {
+        assert!(looks_like_game_path(
+            r"C:\Program Files (x86)\Steam\steamapps\common\Elden Ring\eldenring.exe"
+        ));
+        assert!(looks_like_game_path(
+            r"C:\Program Files\Epic Games\Fortnite\FortniteClient.exe"
+        ));
+        assert!(looks_like_game_path(
+            r"C:\Riot Games\League of Legends\LeagueClient.exe"
+        ));
+    }
+
+    #[test]
+    fn does_not_flag_ordinary_programs() {
+        assert!(!looks_like_game_path(r"C:\Program Files\Mozilla Firefox\firefox.exe"));
+    }
+
+    #[test]
+    fn handles_forward_slashes_too() {
+        assert!(looks_like_game_path(
+            "C:/Program Files (x86)/Steam/steamapps/common/Elden Ring/eldenring.exe"
+        ));
+    }
+
+    #[test]
+    fn wallpaper_engine_is_excluded_from_auto_game() {
+        assert!(is_auto_game_excluded("wallpaper64"));
+        assert!(is_auto_game_excluded("wallpaper32"));
+        assert!(is_auto_game_excluded("ui64"));
+        assert!(!is_auto_game_excluded("eldenring"));
     }
 }

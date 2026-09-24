@@ -1,4 +1,5 @@
 import { useSettings } from "../../core/settings";
+import { UpdateDot } from "../../components/UpdateDot";
 import "./SettingsLauncher.css";
 
 /**
@@ -12,6 +13,7 @@ export function SettingsLauncher() {
   return (
     <button className="launcher" title={locked ? "편집 모드 — 위젯 이동·크기 조절" : "잠금"} onClick={() => setLocked(!locked)}>
       ⚙
+      <UpdateDot className="corner" />
     </button>
   );
 }

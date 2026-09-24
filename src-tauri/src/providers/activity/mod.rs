@@ -25,7 +25,7 @@ mod rules;
 mod store;
 
 use super::Provider;
-use rules::{categorize, normalize_exe, Category, Seed};
+use rules::{categorize, is_auto_game_excluded, looks_like_game_path, normalize_exe, Category, Seed};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -247,11 +247,16 @@ fn run_loop(app: AppHandle) {
         }
 
         let now = now_local();
-        let fg = if idle_for() >= IDLE_AFTER {
-            Foreground::Away
+        let (fg, fresh_path) = if idle_for() >= IDLE_AFTER {
+            (Foreground::Away, None)
         } else {
             current_foreground(&mut exe_cache)
         };
+        // 경로를 방금 새로 읽었고 게임 설치 폴더 안이면, 처음 보는 프로그램을 규칙에 넣는다.
+        // 경로 자체는 저장하지 않는다 — 판단에만 쓴다.
+        if let (Foreground::App(exe), Some(path)) = (&fg, &fresh_path) {
+            maybe_auto_tag_game(&app, exe, path);
+        }
 
         let step = transition(current.as_ref().map(|r| r.exe.as_str()), &fg);
         if step.close_previous {
@@ -336,29 +341,57 @@ fn exe_of_pid(_pid: u32) -> Option<String> {
 /// 같은 프로그램을 계속 쓰는 동안에는 pid 가 그대로라 실행 파일 경로를 다시 읽지 않는다.
 /// 읽지 못한 경우를 `Unknown` 으로 따로 돌려주는 것이 중요하다 — 그걸 "자리 비움"과
 /// 같게 보면 잠깐의 실패마다 구간이 끊긴다.
-fn current_foreground(cache: &mut Option<(u32, String)>) -> Foreground {
+///
+/// 두 번째 값은 **캐시 미스로 경로를 방금 새로 읽었을 때만** `Some` — 게임 설치 폴더
+/// 판단에 쓰고 그 외에는 버린다(경로 자체는 저장하지 않는다).
+fn current_foreground(cache: &mut Option<(u32, String)>) -> (Foreground, Option<String>) {
     let Some(pid) = foreground_pid() else {
-        return Foreground::Unknown;
+        return (Foreground::Unknown, None);
     };
     // 대시보드 자신은 세지 않는다. 바탕화면을 보거나 위젯을 만지면 우리가 전경이 되는데,
     // 그건 "deskboard 를 사용한 시간"이 아니다. 그렇다고 쓰던 프로그램의 구간을 끊지도 않는다.
     if pid == std::process::id() {
-        return Foreground::Ours;
+        return (Foreground::Ours, None);
     }
     if let Some((cached_pid, name)) = cache {
         if *cached_pid == pid {
-            return Foreground::App(name.clone());
+            return (Foreground::App(name.clone()), None);
         }
     }
     let Some(path) = exe_of_pid(pid) else {
-        return Foreground::Unknown;
+        return (Foreground::Unknown, None);
     };
     let n = normalize_exe(&path);
     if n.is_empty() {
-        return Foreground::Unknown;
+        return (Foreground::Unknown, None);
     }
     *cache = Some((pid, n.clone()));
-    Foreground::App(n)
+    (Foreground::App(n), Some(path))
+}
+
+/// 게임 설치 폴더 안에서 처음 보는 실행 파일이면 규칙에 `game` 으로 넣는다.
+/// user 규칙과 seed 가 우선이다 — seed 에 이미 있으면(예: `steamwebhelper`) 건드리지 않고,
+/// `set_rule_if_absent` 라 사용자가 이미 정한 규칙도 덮어쓰지 않는다. 경로는 판단에만
+/// 쓰고 저장하지 않는다.
+fn maybe_auto_tag_game(app: &AppHandle, exe: &str, path: &str) {
+    if !looks_like_game_path(path) || is_auto_game_excluded(exe) {
+        return;
+    }
+    let Some(st) = app.try_state::<ActivityState>() else {
+        return;
+    };
+    if st.seed.contains_key(exe) {
+        return;
+    }
+    let inserted = st
+        .store
+        .lock()
+        .ok()
+        .and_then(|mut s| s.set_rule_if_absent(exe, Category::Game).ok())
+        .unwrap_or(false);
+    if inserted {
+        notify(app, true);
+    }
 }
 
 /// 마지막으로 화면 갱신을 알린 시각.

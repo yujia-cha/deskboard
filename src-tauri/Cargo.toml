@@ -1,6 +1,6 @@
 [package]
 name = "deskboard"
-version = "0.4.1"
+version = "0.4.2"
 description = "Desktop widget dashboard for Windows"
 authors = ["user"]
 edition = "2021"

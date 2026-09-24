@@ -4,7 +4,8 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { contentScale, useSettings, type CardStyle, type Palette, type ThemeMode } from "../core/settings";
 import { WIDGETS, widgetById } from "../widgets/registry";
 import { fieldVisible, type SettingField } from "../widgets/types";
-import { UPDATER_ENABLED, useUpdater } from "../core/updater";
+import { UPDATER_ENABLED, useUpdater, type UpdateState } from "../core/updater";
+import { UpdateDot } from "./UpdateDot";
 import "./SettingsPanel.css";
 
 /** 입력 중에는 건드리지 않고 blur/Enter 때만 적용하는 숫자 입력 */
@@ -191,7 +192,7 @@ export function SettingsPanel() {
               </div>
             </section>
             <section>
-              <h4>업데이트</h4>
+              <h4>업데이트<UpdateDot className="inline" /></h4>
               <UpdateSection u={updater} />
             </section>
             <section>
@@ -211,7 +212,7 @@ export function SettingsPanel() {
 }
 
 /** 버전 표시 + 업데이트 확인·설치. 상태 하나가 곧 화면이다 (`core/updater.ts`). */
-function UpdateSection({ u }: { u: ReturnType<typeof useUpdater> }) {
+function UpdateSection({ u }: { u: { version: string; state: UpdateState; checkNow(): void; install(): void; restart(): void } }) {
   const s = u.state;
   return (
     <>

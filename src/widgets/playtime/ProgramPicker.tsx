@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   addExtra, daysAgo, durationShort, localDay, parseExtras,
   pickCandidates, prettyExe, removeExtra, useUsage,
@@ -68,17 +69,35 @@ export function ProgramPicker({ value, onChange, onClose }: {
               : "눌러서 추가 — 많이 쓴 순서"}
         </span>
         {hits.map((c) => (
-          <button key={c.exe} className="pt-row" onClick={() => onChange(addExtra(value, c.exe))}>
+          <div key={c.exe} className="pt-row" role="button" tabIndex={0}
+            onClick={() => onChange(addExtra(value, c.exe))}
+            onKeyDown={(e) => {
+              // 안쪽 🎮 버튼에서 누른 Enter 가 올라와 목록에까지 더하지 않게 — 행 자신일 때만.
+              if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+              e.preventDefault();
+              onChange(addExtra(value, c.exe));
+            }}>
             <span className="pt-row-name">{prettyExe(c.exe)}</span>
             {prettyExe(c.exe).toLowerCase() !== c.exe.toLowerCase() && (
               <span className="dim pt-row-exe">{c.exe}.exe</span>
             )}
             <span className="dim pt-row-time">{durationShort(c.seconds)}</span>
-          </button>
+            <button
+              className="pt-row-game"
+              title="게임으로 분류 — 모든 플레이타임 위젯에 자동으로 셈"
+              onClick={(e) => {
+                e.stopPropagation();
+                invoke("activity_set_category", { exe: c.exe, category: "game" }).catch(console.warn);
+              }}
+            >
+              🎮
+            </button>
+          </div>
         ))}
       </div>
 
       <span className="dim pt-pick-note">게임은 등록하지 않아도 자동으로 셉니다.</span>
+      <span className="dim pt-pick-note">🎮 를 누르면 게임으로 분류합니다.</span>
     </div>
   );
 }

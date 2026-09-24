@@ -15,7 +15,7 @@ Windows 바탕화면에 상주하는 개인 위젯 대시보드 (Tauri 2 + React
 | `wallpaper` | `providers/wallpaper` | 위젯 아님 — 배경화면을 읽어 블러한 스냅샷을 `wallpaper://update` 로 푸시 (카드 뒤 '진짜 반투명' 재료) |
 | `weather` | `providers/weather` | [Open-Meteo](https://open-meteo.com) — **키·가입 불필요**. 위젯이 떠 있을 때만 15분 폴링, 도시 검색은 `weather_search`(지오코딩, 역시 키 불필요) |
 | `notes` | `providers/notes` | 메모·할 일. SQLite (`notes.sqlite`). 목록은 **위젯 인스턴스마다 독립** — 여러 개 띄워 용도별로 나눠 쓴다. 순서는 손잡이(⠿)를 끌어 바꾼다 — 계산은 `notes/reorder.ts`("어느 항목 **앞**에 둘지"로 말해 완료 항목을 숨겨 둔 목록에서도 숨은 것들이 제자리를 지킨다), 저장은 손을 뗄 때 `notes_reorder` 한 번 |
-| `playtime` | `providers/activity` | `playtime` 은 게임(분류 규칙)을 자동으로 세고, 그 밖의 프로그램은 설정의 `extra` 에 등록한 것만 더해 도넛으로 보여준다 — "게임만"과 "앱 전부"로 위젯을 나누면 같은 데이터를 두 번 보게 된다. 앞에 떠 있는 창의 실행 파일 이름만 **2초마다** 확인해 `activity.sqlite` 에 누적 — **창 제목은 저장하지 않는다.** 확인은 자주, 기록은 드물게(30초마다 한 번 flush) — 비싼 것은 Win32 호출이 아니라 SQL 이다. 더하는 값은 **실제로 흐른 시간**(`MAX_TICK` 으로 자름)이고, 전경이 대시보드 자신이거나 읽지 못한 경우(`Foreground::Ours`/`Unknown`)에는 **아무것도 하지 않는다** — 위젯을 클릭했다고 세던 구간을 끊으면 하루가 토막 난다. 입력이 3분 없으면 자리비움으로 보고 세지 않고, 대시보드 자신도 세지 않는다. 분류는 `resources/activity-rules.json` + 사용자 규칙(`rules` 테이블이 우선) |
+| `playtime` | `providers/activity` | `playtime` 은 게임(분류 규칙)을 자동으로 세고, 그 밖의 프로그램은 설정의 `extra` 에 등록한 것만 더해 도넛으로 보여준다 — "게임만"과 "앱 전부"로 위젯을 나누면 같은 데이터를 두 번 보게 된다. 앞에 떠 있는 창의 실행 파일 이름만 **2초마다** 확인해 `activity.sqlite` 에 누적 — **창 제목은 저장하지 않는다.** 확인은 자주, 기록은 드물게(30초마다 한 번 flush) — 비싼 것은 Win32 호출이 아니라 SQL 이다. 더하는 값은 **실제로 흐른 시간**(`MAX_TICK` 으로 자름)이고, 전경이 대시보드 자신이거나 읽지 못한 경우(`Foreground::Ours`/`Unknown`)에는 **아무것도 하지 않는다** — 위젯을 클릭했다고 세던 구간을 끊으면 하루가 토막 난다. 입력이 3분 없으면 자리비움으로 보고 세지 않고, 대시보드 자신도 세지 않는다. 분류는 `resources/activity-rules.json` + 사용자 규칙(`rules` 테이블이 우선). **목록에 없는 게임은 기록은 되지만 위젯에서 걸러진다** — 그래서 두 길을 더 뒀다: ① 게임 설치 폴더(`steamapps\common`·`Epic Games`·`Riot Games`·`XboxGames` 등, `rules::looks_like_game_path`)에서 실행된 exe 는 처음 볼 때 `rules` 에 `game` 으로 넣는다(`set_rule_if_absent` — seed 와 사용자 선택이 우선, **경로는 판단에만 쓰고 저장하지 않는다**), ② "셀 프로그램 고르기"의 🎮 버튼(`activity_set_category`). `extra` 는 사람 이름("VS Code")도 받는다(`parseExtras` 가 exe 이름으로 바꾼다) |
 | `github` | `providers/github` | 기여도 잔디(1년)·리뷰 요청·담당 이슈·미확인 알림, 그리고 등록한 저장소(8개)마다 열린 PR/이슈·내 차례인 것·그 저장소 알림·기본 브랜치 CI. **주기마다 호출은 두 번뿐** — GraphQL 하나(`parse::build_query`, 저장소는 `r0:` `r1:` 별칭으로 나란히)와 REST `/notifications` 하나(GraphQL 에 알림 API 가 없다). 저장소를 늘려도 호출 수는 그대로다. classic PAT 에 `repo`·`notifications`·**`read:user`**(잔디) 필요. PAT 는 **DPAPI 로 암호화**해 `github.dat` 에 (`providers/secrets`) |
 | `folder` | `providers/folders` | 디스코드식 바로가기 폴더. 인스턴스당 실제 디렉터리 1개. **`settings.source` 가 두 가지를 가른다** — `managed`(전용 폴더를 `%APPDATA%/com.user.deskboard/folders/<instanceId>` 에 만들어 쓴다. `dir` 은 쓰지 않고 저장도 하지 않는다)와 `link`(사용자가 고른 기존 폴더. **없으면 만들지 않고** 위젯이 이유를 보여준다). 드롭 시 이동/복사, `IShellItemImageFactory` 로 아이콘 추출, `notify` 로 변경 감지 |
 
@@ -49,6 +49,9 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
 - 앱은 `tauri-plugin-updater` 로 `releases/latest/download/latest.json` 을 본다
   (`tauri.conf.json` 의 `plugins.updater`). 확인은 **시작 8초 뒤 한 번**과 설정에서 누를 때뿐 —
   주기적으로 긁지 않는다 (`core/updater.ts`, 설정 패널의 "업데이트" 섹션).
+  상태는 zustand 스토어라 어디서나 읽는다 — 새 버전이 있으면(`available`/`ready`) 톱니 위젯 모서리·편집 바
+  "⚙ 설정"·설정 패널 "업데이트" 제목에 강조색 6px 점(`components/UpdateDot`)이 뜬다. 애니메이션 없음.
+  DEV 에서는 콘솔의 `__updater.setState({state:{kind:"available",version:"9.9.9",notes:""}})` 로 흉내 낸다.
 - 업데이터 플러그인은 **release 빌드에서만** 건다 (`lib.rs`). 개발 실행의 버전은 설치본과
   무관해서, 걸어 두면 `tauri dev` 가 매번 자기를 업데이트하겠다고 나선다. 프론트도
   `UPDATER_ENABLED` 로 DEV 에서는 확인을 건너뛴다.

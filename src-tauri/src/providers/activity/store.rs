@@ -162,6 +162,16 @@ impl Store {
         Ok(())
     }
 
+    /// 규칙이 없을 때만 넣는다 (자동 분류용). 사용자가 이미 정한 규칙은 덮어쓰지 않는다.
+    /// 삽입됐으면 true.
+    pub fn set_rule_if_absent(&mut self, exe: &str, cat: Category) -> Result<bool, ActivityError> {
+        let n = self.conn.execute(
+            "INSERT OR IGNORE INTO rules (exe, category) VALUES (?1, ?2)",
+            params![exe, cat.as_str()],
+        )?;
+        Ok(n > 0)
+    }
+
     /// 오래된 기록을 지운다. 위젯이 보여주는 범위 밖은 쌓아둘 이유가 없다.
     pub fn prune(&mut self, before_day: &str) -> Result<usize, ActivityError> {
         let a = self.conn.execute("DELETE FROM usage WHERE day < ?1", params![before_day])?;
@@ -263,6 +273,23 @@ mod tests {
         assert_eq!(s.user_rules().unwrap(), vec![("chrome".to_string(), Category::Work)]);
         s.set_rule("chrome", Category::Other).unwrap();
         assert_eq!(s.user_rules().unwrap(), vec![("chrome".to_string(), Category::Other)]);
+    }
+
+    #[test]
+    fn set_rule_if_absent_does_not_override_an_existing_user_rule() {
+        let mut s = store();
+        s.set_rule("chrome", Category::Work).unwrap();
+        let inserted = s.set_rule_if_absent("chrome", Category::Game).unwrap();
+        assert!(!inserted);
+        assert_eq!(s.user_rules().unwrap(), vec![("chrome".to_string(), Category::Work)]);
+    }
+
+    #[test]
+    fn set_rule_if_absent_inserts_a_new_rule() {
+        let mut s = store();
+        let inserted = s.set_rule_if_absent("eldenring", Category::Game).unwrap();
+        assert!(inserted);
+        assert_eq!(s.user_rules().unwrap(), vec![("eldenring".to_string(), Category::Game)]);
     }
 
     #[test]

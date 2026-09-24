@@ -3,8 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { useSettings } from "./core/settings";
 import { invokeInOrder, useEvent } from "./core/ipc";
 import { useWallpaper } from "./core/wallpaper";
+import { startUpdater } from "./core/updater";
 import { Canvas } from "./components/Canvas";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { UpdateDot } from "./components/UpdateDot";
 import "./core/theme.css";
 import "./App.css";
 
@@ -43,6 +45,7 @@ export default function App() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (loaded) startUpdater(); }, [loaded]);
 
   // 카드 뒤에 깔 블러된 배경화면 (진짜 반투명)
   useWallpaper(loaded ? blurStrength : 0, canvasMonitor);
@@ -96,7 +99,7 @@ export default function App() {
           {selection.length > 1
             ? `${selection.length}개 선택 — 하나를 끌면 함께 움직입니다 · Esc: 선택 해제`
             : "편집 모드 — 헤더 드래그: 이동 · 빈 곳 드래그: 여러 개 선택 · Ctrl/Shift 클릭: 추가 · 테두리·모서리 드래그: 크기"}
-          <button onClick={() => openSettings(null)}>⚙ 설정</button>
+          <button onClick={() => openSettings(null)}>⚙ 설정<UpdateDot className="inline" /></button>
           <button onClick={() => setLocked(true)}>🔒 잠금</button>
         </div>
       )}

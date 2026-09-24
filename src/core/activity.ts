@@ -83,9 +83,26 @@ const PRETTY: Record<string, string> = {
   leagueclient: "LoL 클라이언트", riotclientservices: "Riot 클라이언트",
   valorant: "VALORANT", "valorant-win64-shipping": "VALORANT",
   epicgameslauncher: "Epic Games", galaxyclient: "GOG Galaxy", notepad: "메모장",
+  destiny2: "Destiny 2", limbuscompany: "Limbus Company", lobotomycorp: "Lobotomy Corporation",
+  slaythespire2: "Slay the Spire 2", astralparty_int: "Astral Party",
 };
 export function prettyExe(exe: string): string {
   return PRETTY[exe.toLowerCase()] ?? exe;
+}
+
+/** 사람이 흔히 쓰는 줄임말 → 실행 파일 이름. `PRETTY` 의 역방향 매핑으로 못 잡는 것만. */
+const ALIASES: Record<string, string> = {
+  "visual studio code": "code", vscode: "code", lol: "league of legends",
+};
+/** `PRETTY` 를 뒤집은 것 — 사람 이름(소문자) → 실행 파일 이름. */
+const PRETTY_REVERSE: Record<string, string> = Object.fromEntries(
+  Object.entries(PRETTY).map(([exe, pretty]) => [pretty.toLowerCase(), exe]),
+);
+
+/** 사람이 입력한 이름 하나를 실행 파일 이름으로. 아는 이름이 아니면 그대로 통과시킨다. */
+function toExeKey(raw: string): string {
+  const key = raw.trim().toLowerCase().replace(/\.exe$/, "");
+  return ALIASES[key] ?? PRETTY_REVERSE[key] ?? key;
 }
 
 /** 합계가 0 이어도 나누지 않는 비율. */
@@ -106,25 +123,28 @@ export function sliceColor(i: number): string {
   return `color-mix(in srgb, ${base} ${pct}%, transparent)`;
 }
 
-/** 설정에 적은 "추가로 볼 프로그램" 목록을 정규화한다 (쉼표 구분, 대소문자·.exe 무시). */
+/**
+ * 설정에 적은 "추가로 볼 프로그램" 목록을 정규화한다 (쉼표 구분, 대소문자·.exe 무시).
+ * 사람이 읽는 이름("VS Code")도 받는다 — `toExeKey` 가 실행 파일 이름으로 바꾼다.
+ */
 export function parseExtras(text: string): string[] {
   return String(text ?? "")
     .split(",")
-    .map((s) => s.trim().toLowerCase().replace(/\.exe$/, ""))
+    .map(toExeKey)
     .filter(Boolean);
 }
 
 /** 쉼표 목록에 프로그램을 더한다 (이미 있으면 그대로). */
 export function addExtra(text: string, exe: string): string {
   const list = parseExtras(text);
-  const key = exe.trim().toLowerCase().replace(/\.exe$/, "");
+  const key = toExeKey(exe);
   if (!key || list.includes(key)) return text;
   return [...list, key].join(", ");
 }
 
 /** 쉼표 목록에서 프로그램을 뺀다. */
 export function removeExtra(text: string, exe: string): string {
-  const key = exe.trim().toLowerCase().replace(/\.exe$/, "");
+  const key = toExeKey(exe);
   return parseExtras(text).filter((e) => e !== key).join(", ");
 }
 

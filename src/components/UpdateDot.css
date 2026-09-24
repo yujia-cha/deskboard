@@ -1,0 +1,6 @@
+.update-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 1.5px var(--surface-strong);
+}
+.update-dot.corner { position: absolute; top: 8px; right: 8px; }
+.update-dot.inline { margin-left: 6px; vertical-align: middle; }

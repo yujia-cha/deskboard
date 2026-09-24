@@ -125,6 +125,11 @@ describe("extras list", () => {
     expect(parseExtras("")).toEqual([]);
   });
 
+  it("accepts human-readable names", () => {
+    expect(parseExtras("firefox, visual studio code, ")).toEqual(["firefox", "code"]);
+    expect(parseExtras("VS Code")).toEqual(["code"]);
+  });
+
   it("adds without duplicating", () => {
     expect(addExtra("", "Code.exe")).toBe("code");
     expect(addExtra("code", "chrome")).toBe("code, chrome");

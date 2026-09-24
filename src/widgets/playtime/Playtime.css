@@ -45,11 +45,17 @@
 .pt-search:focus { outline: none; border-color: var(--accent); }
 .pt-pick-list { flex: 1 1 auto; min-height: 0; overflow: auto; gap: 2px; }
 .pt-row {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 6px;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: baseline; gap: 6px;
   background: transparent; border: 0; border-radius: 6px; color: var(--text);
-  padding: 3px 6px; font-size: var(--fs-meta); text-align: left; width: 100%;
+  padding: 3px 6px; font-size: var(--fs-meta); text-align: left; width: 100%; cursor: pointer;
 }
 .pt-row:hover { background: var(--fill-hover); }
 .pt-row-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pt-row-exe { font-size: var(--fs-micro); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pt-row-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pt-row-time { grid-column: 3; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 게임으로 분류 버튼 — 평소엔 옅게, 올리면 또렷하게 */
+.pt-row-game {
+  grid-column: 4; background: transparent; border: 0; color: var(--text-dim); padding: 0 2px;
+  font-size: var(--fs-meta); line-height: 1; border-radius: 4px;
+}
+.pt-row-game:hover { color: var(--text); }

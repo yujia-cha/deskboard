@@ -107,14 +107,19 @@ export function simParamsOf(p: Physics, quality: Quality = "medium"): SimParams 
 }
 
 const PRESSURE_ITERS3: Record<Quality, number> = { low: 15, medium: 30, high: 60 };
+const FLIP_MAX3 = 0.8;
 
 /**
  * 3D 솔버 계수 — 2D 값 위에 반복 수만 바꾼다. 3D 는 입자가 굵고(수천 개) 스텝이 1/60 이라
  * 압력 반복을 줄여도 되고, 이웃 탐색이 비싸 분리는 1회가 기본이다 (벤치: 2회면 스텝 2배).
  */
 export function simParams3Of(p: Physics, quality: Quality = "medium"): SimParams3 {
+  const base = simParamsOf(p, quality);
   return {
-    ...simParamsOf(p, quality),
+    ...base,
+    // 3D 는 FLIP 잡음 바닥이 높다 — 고인 물의 실제 변위(실측, res 20): flip 0.91 → 0.16 m/s, 0.8 → 0.08,
+    // 0.7 → 0.056. 0.16 은 가라앉히기 문턱(CALM_GATE 0.15)을 넘어 영영 잠들지 못했다. 0.8 로 자른다.
+    flipRatio: Math.min(base.flipRatio, FLIP_MAX3),
     pressureIters: PRESSURE_ITERS3[quality] ?? PRESSURE_ITERS3.medium,
     separationIters: quality === "high" ? 2 : 1,
     densityK: 1,

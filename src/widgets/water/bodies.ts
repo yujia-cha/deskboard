@@ -138,6 +138,12 @@ export function markSolid(sim: FlipSim3, set: BodySet) {
       const cell = sim.idx(i, j, k);
       if (!sim.isWall(cell)) sim.setBodyCell(cell, bi);
     }
+    // 상자(+r)와 조금이라도 겹치는 칸 — 밀도 보정 제외
+    const r = sim.r;
+    const ni0 = Math.max(1, Math.floor((box.x0 - r) / h) + 1), ni1 = Math.min(n - 2, Math.floor((box.x1 + r) / h) + 1);
+    const nj0 = Math.max(1, Math.floor((box.y0 - r) / h) + 1), nj1 = Math.min(n - 2, Math.floor((box.y1 + r) / h) + 1);
+    const nk0 = Math.max(1, Math.floor((box.z0 - r) / h) + 1), nk1 = Math.min(n - 2, Math.floor((box.z1 + r) / h) + 1);
+    for (let i = ni0; i <= ni1; i++) for (let j = nj0; j <= nj1; j++) for (let k = nk0; k <= nk1; k++) sim.nearBody[sim.idx(i, j, k)] = 1;
   });
 }
 

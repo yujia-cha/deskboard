@@ -116,8 +116,19 @@ export class FlipSim3 {
   private s: Float32Array;
   /** 칸이 바디에 덮여 있으면 그 바디 번호, 아니면 −1 */
   readonly bodyOf: Int8Array;
+  /** 바디 상자와 조금이라도 겹치는 칸 (1) — 밀도 보정을 건너뛴다 */
+  readonly nearBody: Uint8Array;
   readonly cellType: Uint8Array;
   readonly density: Float32Array;
+  /** 칸마다 닿아 있는 통 벽의 수 (0~3) */
+  private wallCount: Uint8Array;
+  /**
+   * 벽 수별 기준 밀도. 복셀 격자(입자)와 압력 격자의 간격이 어긋나 칸이 읽는 밀도는 위치에 따라 다르다 —
+   * 특히 벽 옆 칸은 입자 중심이 벽에서 r 떨어져 있어 속 칸과 다르게 읽힌다. 시드 직후(완벽한 격자)에
+   * 벽 수마다 재서 그것을 "제자리" 로 삼는다. 해석값 (h/voxel)³ 하나만 쓰면 속이 2~3% 성기거나 벽 옆이
+   * 20% 뭉친 것으로 보여, 물 전체가 부풀거나 벽 기둥이 비었다 (실측).
+   */
+  private restWall = new Float32Array(4);
   restDensity = 0;
   /** 바디 칸의 면 속도 — `markSolid` 가 채운다 (바디 수 × 3) */
   bodyVel: Float32Array = new Float32Array(0);
@@ -164,8 +175,10 @@ export class FlipSim3 {
     this.sStatic = new Float32Array(cells);
     this.s = new Float32Array(cells);
     this.bodyOf = new Int8Array(cells).fill(-1);
+    this.nearBody = new Uint8Array(cells);
     this.cellType = new Uint8Array(cells);
     this.density = new Float32Array(cells);
+    this.wallCount = new Uint8Array(cells);
     this.fluidCells = new Int32Array(cells);
 
     this.pos = new Float32Array(MAX_PARTICLES3 * 3);
@@ -209,6 +222,13 @@ export class FlipSim3 {
       }
     }
     this.s.set(sStatic);
+    const nn = n * n;
+    for (let i = 1; i < n - 1; i++) for (let j = 1; j < n - 1; j++) for (let k = 1; k < n - 1; k++) {
+      const c = (i * n + j) * n + k;
+      this.wallCount[c] = (sStatic[c - nn] === 0 ? 1 : 0) + (sStatic[c + nn] === 0 ? 1 : 0) + (sStatic[c - n] === 0 ? 1 : 0)
+        + (sStatic[c + n] === 0 ? 1 : 0) + (sStatic[c - 1] === 0 ? 1 : 0) + (sStatic[c + 1] === 0 ? 1 : 0);
+      if (this.wallCount[c] > 3) this.wallCount[c] = 3;
+    }
   }
 
   /** 바닥(+y)부터 `fill` 높이까지 복셀 중심마다 입자 하나. 속도 0. */
@@ -473,9 +493,9 @@ export class FlipSim3 {
     const { n, h, pos, density: d } = this;
     d.fill(0);
     const half = h / 2;
-    // 벽 옆 입자의 가중치가 벽 칸으로 새지 않게 표본 위치를 첫 유체 칸 중심 안쪽으로 모은다.
-    // 새게 두면 벽 옆 칸이 늘 성기게 읽혀 밀도 보정이 그곳을 못 보고, 입자가 벽에서 더 빽빽이
-    // 뭉쳐 벽 기둥의 수면이 1~5 복셀 낮아졌다 (실측).
+    // 벽 옆 입자의 가중치가 벽 칸으로 새지 않게 표본 위치를 첫 유체 칸 중심 안쪽으로 모은다 —
+    // 새면 그만큼 질량이 사라져 벽 옆 칸이 물의 움직임과 무관하게 성기게 읽힌다. 남는 격자 어긋남은
+    // 벽 수별 기준 밀도(`restWall`)가 흡수한다.
     const lo = half, hi = (n - 2) * h - half;
     for (let i = 0; i < this.count; i++) {
       const x = Math.max(lo, Math.min(hi, pos[3 * i])), y = Math.max(lo, Math.min(hi, pos[3 * i + 1])), z = Math.max(lo, Math.min(hi, pos[3 * i + 2]));
@@ -483,12 +503,28 @@ export class FlipSim3 {
       d[w.n0] += w.d0; d[w.n1] += w.d1; d[w.n2] += w.d2; d[w.n3] += w.d3;
       d[w.n4] += w.d4; d[w.n5] += w.d5; d[w.n6] += w.d6; d[w.n7] += w.d7;
     }
-    if (this.restDensity === 0) {
-      // 해석값: 칸 부피 / 입자(복셀) 부피 = (h / voxel)³. 재서 쓰면 안 된다 — 복셀 격자와 압력 격자의
-      // 간격이 어긋나 속 칸 평균이 2~3% 높게 나오고, 그러면 온 물이 "성긴" 것으로 보여 tension 이
-      // 안쪽으로 당기고 벽 옆 칸(당기지 않음)에서 물이 빠져나간다 (실측: 벽 기둥 수면이 1~5 복셀 낮았다).
-      this.restDensity = Math.pow(this.h / this.voxel, 3);
+    if (this.restDensity === 0) this.measureRest();
+  }
+
+  /** 시드 직후의 격자에서 벽 수별 기준 밀도를 잰다 — 공기에 닿은 칸은 뺀다. 표본이 없으면 해석값. */
+  private measureRest() {
+    const { n, cellType, density: d, wallCount } = this;
+    const nn = n * n;
+    const sum = [0, 0, 0, 0], cnt = [0, 0, 0, 0];
+    for (let i = 1; i < n - 1; i++) {
+      for (let j = 1; j < n - 1; j++) {
+        for (let k = 1; k < n - 1; k++) {
+          const c = (i * n + j) * n + k;
+          if (cellType[c] !== FLUID) continue;
+          if (cellType[c - nn] === AIR || cellType[c + nn] === AIR || cellType[c - n] === AIR
+            || cellType[c + n] === AIR || cellType[c - 1] === AIR || cellType[c + 1] === AIR) continue;
+          sum[wallCount[c]] += d[c]; cnt[wallCount[c]]++;
+        }
+      }
     }
+    const analytic = Math.pow(this.h / this.voxel, 3);
+    for (let w = 0; w < 4; w++) this.restWall[w] = cnt[w] > 0 ? sum[w] / cnt[w] : (w > 0 && cnt[w - 1] > 0 ? this.restWall[w - 1] : analytic);
+    this.restDensity = this.restWall[0];
   }
 
   private smooth(strength: number, passes: number) {
@@ -533,21 +569,34 @@ export class FlipSim3 {
         }
       }
     }
-    const rest = this.restDensity;
+    const restWall = this.restWall, wallCount = this.wallCount;
+    const hasRest = this.restDensity > 0;
     for (let it = 0; it < iters; it++) {
       const backward = it % 2 === 1;
       for (let kk = 0; kk < count; kk++) {
         const c = fluidCells[backward ? count - 1 - kk : kk];
         const sx0 = s[c - nn], sx1 = s[c + nn], sy0 = s[c - n], sy1 = s[c + n], sz0 = s[c - 1], sz1 = s[c + 1];
         const sum = sx0 + sx1 + sy0 + sy1 + sz0 + sz1;
-        let div = u[c + nn] - u[c] + v[c + n] - v[c] + w[c + 1] - w[c];
-        if (rest > 0) {
-          const compression = (density[c] - rest) * densityK;
-          // 2D 와 달리 벽에 닿은 칸도 당긴다 — 밀도 표본을 벽 안쪽으로 모아(updateDensity) 그 칸이 성기게
-          // 읽히지 않으므로 2D 의 "벽마다 얇은 막" 문제가 없고, 당기지 않으면 밀기만 남아 벽 기둥이 빈다.
-          div -= compression > 0 ? compression : tension * compression;
+        const div = u[c + nn] - u[c] + v[c + n] - v[c] + w[c + 1] - w[c];
+        let p = (-div / sum) * over;
+        // 바디 상자와 겹치는 칸은 밀도 보정을 하지 않는다 — 입자가 칸의 일부에만 들어갈 수 있어 성기게 읽히고,
+        // 당기면 그 좁은 틈으로 입자를 욱여넣다 분리와 싸워 바디 둘레에 구덩이가 남았다 (실측).
+        if (hasRest && this.nearBody[c] === 0) {
+          const compression = (density[c] - restWall[wallCount[c]]) * densityK;
+          let corr = 0;
+          if (compression > 0) corr = compression;
+          else if (cellType[c - nn] !== AIR && cellType[c + nn] !== AIR && cellType[c - n] !== AIR
+            && cellType[c + n] !== AIR && cellType[c - 1] !== AIR && cellType[c + 1] !== AIR) {
+            // 성긴 칸 당기기는 **공기에 닿지 않은 칸만**. 수면 칸은 가중치 절반이 공기로 새어 늘 성기게 읽히는데,
+            // 거기서 당기면 수면 전체가 매 스텝 아래로 1.6 m/s 씩 끌려 내려가 아래층과 부딪히며 떨었다
+            // (실측: PIC 물이 옆으로 밀어도 안 움직이고, 고인 물 잡음이 0.16 m/s).
+            corr = tension * compression;
+          }
+          // 밀도 보정은 발산과 **따로** 여섯 면에 고르게 나눈다(벽 면 몫은 버린다). 발산과 합쳐 열린 면 수로
+          // 나누면 벽 옆 칸이 안쪽으로 1/5, 속 칸은 1/6 씩 밀어 매 스텝 벽에서 안쪽으로 조금씩 흐른다 —
+          // 4초면 벽 기둥 입자의 25% 가 빠져나갔다 (실측, 분리·응집·PIC 와 무관).
+          p += (corr / 6) * over;
         }
-        const p = (-div / sum) * over;
         u[c] -= sx0 * p; u[c + nn] += sx1 * p;
         v[c] -= sy0 * p; v[c + n] += sy1 * p;
         w[c] -= sz0 * p; w[c + 1] += sz1 * p;
@@ -566,15 +615,19 @@ export class FlipSim3 {
       const ox = comp === 0 ? 0 : half, oy = comp === 1 ? 0 : half, oz = comp === 2 ? 0 : half;
       for (let i = 0; i < this.count; i++) {
         const w = this.weights(pos[3 * i], pos[3 * i + 1], pos[3 * i + 2], ox, oy, oz);
-        // 양쪽 칸이 모두 공기인 면은 뜻이 없다 — 빼고 가중 평균한다.
-        const v0 = (cellType[w.n0] !== AIR || cellType[w.n0 - offset] !== AIR ? 1 : 0) * w.d0;
-        const v1 = (cellType[w.n1] !== AIR || cellType[w.n1 - offset] !== AIR ? 1 : 0) * w.d1;
-        const v2 = (cellType[w.n2] !== AIR || cellType[w.n2 - offset] !== AIR ? 1 : 0) * w.d2;
-        const v3 = (cellType[w.n3] !== AIR || cellType[w.n3 - offset] !== AIR ? 1 : 0) * w.d3;
-        const v4 = (cellType[w.n4] !== AIR || cellType[w.n4 - offset] !== AIR ? 1 : 0) * w.d4;
-        const v5 = (cellType[w.n5] !== AIR || cellType[w.n5 - offset] !== AIR ? 1 : 0) * w.d5;
-        const v6 = (cellType[w.n6] !== AIR || cellType[w.n6 - offset] !== AIR ? 1 : 0) * w.d6;
-        const v7 = (cellType[w.n7] !== AIR || cellType[w.n7 - offset] !== AIR ? 1 : 0) * w.d7;
+        // 어느 쪽도 유체가 아닌 면은 뜻이 없다 — 빼고 가중 평균한다. 2D 는 "둘 다 공기" 만 뺐는데, 그러면
+        // 벽 칸 안의 면(속도 0)이 벽 옆 입자의 **접선** 속도를 26% 깎는다. 가만히 고인 물도 매 스텝 g·dt² 만큼
+        // 가라앉았다가 밀도 보정 흐름으로 되올라오는데, 벽 옆만 덜 올라와 눌리고 안쪽으로 밀려났다
+        // (실측: 4초에 벽 기둥 입자 25% 이탈, 수면 1.5 복셀 낮음). 벽에 수직인 성분은 유체-벽 면이 유체 쪽
+        // 칸 덕에 살아남아 그대로 0 으로 막힌다 (free-slip).
+        const v0 = (cellType[w.n0] === FLUID || cellType[w.n0 - offset] === FLUID ? 1 : 0) * w.d0;
+        const v1 = (cellType[w.n1] === FLUID || cellType[w.n1 - offset] === FLUID ? 1 : 0) * w.d1;
+        const v2 = (cellType[w.n2] === FLUID || cellType[w.n2 - offset] === FLUID ? 1 : 0) * w.d2;
+        const v3 = (cellType[w.n3] === FLUID || cellType[w.n3 - offset] === FLUID ? 1 : 0) * w.d3;
+        const v4 = (cellType[w.n4] === FLUID || cellType[w.n4 - offset] === FLUID ? 1 : 0) * w.d4;
+        const v5 = (cellType[w.n5] === FLUID || cellType[w.n5 - offset] === FLUID ? 1 : 0) * w.d5;
+        const v6 = (cellType[w.n6] === FLUID || cellType[w.n6 - offset] === FLUID ? 1 : 0) * w.d6;
+        const v7 = (cellType[w.n7] === FLUID || cellType[w.n7 - offset] === FLUID ? 1 : 0) * w.d7;
         const d = v0 + v1 + v2 + v3 + v4 + v5 + v6 + v7;
         if (d <= 0) continue;
         const pic = (v0 * f[w.n0] + v1 * f[w.n1] + v2 * f[w.n2] + v3 * f[w.n3]
@@ -593,6 +646,7 @@ export class FlipSim3 {
   resetSolids() {
     this.s.set(this.sStatic);
     this.bodyOf.fill(-1);
+    this.nearBody.fill(0);
   }
 
   /** 칸을 바디 `id` 의 벽으로 표시한다. */

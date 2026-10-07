@@ -36,8 +36,9 @@ import type { SimParams } from "./sim";
 const DT = 1 / 120;
 /** 한 프레임에 따라잡는 최대 스텝 — 넘치면 밀린 시간은 버린다 */
 const MAX_STEPS = 8;
-/** 이보다 덜 움직이면(실제 변위, m/s) 고인 물로 본다 */
+/** 이보다 덜 움직이면(실제 변위, m/s) 고인 물로 본다. 3D 는 복셀이 굵어(0.075 m) 0.04 도 초당 반 복셀이다 */
 const SLEEP_MOTION = 0.03;
+const SLEEP_MOTION3 = 0.04;
 /** 고인 상태가 이만큼 이어지면 잠든다 (s) */
 const SLEEP_AFTER = 1;
 /** 안전망 — 통을 건드리지 않은 지 이만큼 지나면 물이 어떻든 잠든다 (s) */
@@ -47,6 +48,7 @@ const WHEEL_STEP = Math.PI / 12;
 const WHEEL_PITCH = Math.PI / 36;
 /** 등각 그림이 카드에서 차지하는 비율 */
 const ISO_FIT = 0.92;
+const DEBUG_OVERLAY = true;
 
 type Drag =
   | { mode: "move"; id: number; offX: number; offY: number }
@@ -96,6 +98,8 @@ export class WaterEngine {
   private hover: "move" | "rotate" | null = null;
 
   private raf = 0;
+  private frames = 0;
+  private stepsTotal = 0;
   private last = 0;
   private acc = 0;
   private still = 0;
@@ -142,6 +146,18 @@ export class WaterEngine {
 
     this.readColors();
     this.resize();
+    if (import.meta.env.DEV) (window as unknown as { __waterEngine?: WaterEngine }).__waterEngine = this;
+  }
+
+  /** 개발 페이지(dev.tsx)가 읽는 상태 */
+  debugState() {
+    const b = this.box;
+    return {
+      view: this.view, res: this.layout?.res ?? this.sim?.res ?? 0, count: this.sim3?.count ?? this.sim?.count ?? 0, K: this.K,
+      w: this.w, h: this.h, motion: this.motion(), still: this.still, quiet: this.quiet, idle: this.idle, raf: !!this.raf,
+      frames: this.frames, steps: this.stepsTotal, ph: b.ph, th: b.th, box: [b.x, b.y], home: [this.home.x, this.home.y],
+      settled: boxSettled(b, this.targets), field: this.field, bodies: this.bodySet.bodies.map((x) => ({ pos: x.pos, vel: x.vel, sub: x.submerged })),
+    };
   }
 
   dispose() {
@@ -204,10 +220,11 @@ export class WaterEngine {
         this.disturb();
       }
     } else {
-      // 등각 — 복셀 한 변은 4U 버퍼 px, 화면에서는 그 K 배. 요청한 입자 크기에서 시작해 예산 안에서 res 를 정한다.
+      // 등각 — 복셀 한 변은 4U 버퍼 px, 화면에서는 그 K 배(정수). 복셀 수가 먼저다: 카드가 허락하는
+      // 만큼(버퍼 px 1 = 화면 px 1) 또는 입자 예산까지. 그보다 카드가 크면 정수 배로 키운다.
+      // 설정의 입자 크기(pixelSize)는 2D 보기에만 적용한다 — 여기서 쓰면 200px 카드에서 res 가 10 으로 떨어진다.
       const avail = Math.min(w, h) * ISO_FIT;
-      const byPixel = Math.floor(avail / (4 * U * pixelSize));
-      const res = Math.max(8, Math.min(resolutionFor3(avail, 1, fill), Math.max(10, byPixel)));
+      const res = Math.max(8, Math.min(resolutionFor3(avail, 1, fill), Math.floor(avail / (4 * U))));
       this.K = Math.max(1, Math.floor(avail / (4 * U * res)));
       this.boxPx = 4 * U * res * this.K;
       const shapeName: ShapeName = typeof this.scene.shape === "string" ? this.scene.shape : "box";
@@ -335,9 +352,11 @@ export class WaterEngine {
       steps++;
     }
     if (steps === MAX_STEPS) this.acc = 0;
+    this.frames++;
+    this.stepsTotal += steps;
     this.draw();
 
-    const resting = !this.drag && boxSettled(this.box, this.targets) && this.motion() < SLEEP_MOTION;
+    const resting = !this.drag && boxSettled(this.box, this.targets) && this.motion() < (sim3 ? SLEEP_MOTION3 : SLEEP_MOTION);
     this.still = resting ? this.still + real : 0;
     const asleep = this.still >= SLEEP_AFTER || this.idle >= FORCE_SLEEP_IDLE;
     if (!asleep && !document.hidden) this.raf = requestAnimationFrame(this.frame);
@@ -488,6 +507,21 @@ export class WaterEngine {
       ctx.stroke();
       ctx.restore();
     }
+    if (DEBUG_OVERLAY) {
+      ctx.save();
+      ctx.fillStyle = this.hintColor;
+      ctx.font = "9px monospace";
+      const b = this.box;
+      const lines = [
+        `res ${res} n ${this.sim3?.count ?? 0} K ${K} w ${this.w}x${this.h}`,
+        `motion ${this.motion().toFixed(4)} still ${this.still.toFixed(1)} quiet ${this.quiet.toFixed(1)} idle ${this.idle.toFixed(1)}`,
+        `settled ${boxSettled(b, this.targets)} raf ${this.raf ? 1 : 0} ph ${b.ph.toFixed(3)} wp ${b.wp.toFixed(3)}`,
+        `box ${b.x.toFixed(1)},${b.y.toFixed(1)} home ${this.home.x.toFixed(1)},${this.home.y.toFixed(1)} a ${b.ax.toFixed(1)},${b.ay.toFixed(1)}`,
+        `frames ${this.frames} steps ${this.stepsTotal} dt ${(this.sim3?.dt ?? 0).toFixed(4)}`,
+      ];
+      lines.forEach((l, i) => ctx.fillText(l, 4, 10 + i * 10));
+      ctx.restore();
+    }
   }
 
   // --- 입력 ---------------------------------------------------------------------
@@ -528,7 +562,7 @@ export class WaterEngine {
     if (e.button !== 0 || this.drag) return;
     const p = this.local(e);
     const body = this.bodyAt(p);
-    this.canvas.setPointerCapture(e.pointerId);
+    try { this.canvas.setPointerCapture(e.pointerId); } catch { /* 합성 이벤트(개발 페이지)에는 활성 포인터가 없다 */ }
     if (body) {
       body.grab = [...body.pos];
       this.drag = { mode: "body", id: e.pointerId, body, lastX: p.x, lastY: p.y };

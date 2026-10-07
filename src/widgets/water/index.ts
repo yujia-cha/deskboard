@@ -44,7 +44,7 @@ export const waterWidget: WidgetDefinition<WaterSettings> = {
     { key: "timeScale", label: "시간 배율", type: "range", default: w.timeScale, min: 25, max: 200, step: 5, unit: "%", ...custom },
     // 늘 보이는 것
     { key: "fill", label: "물 양", type: "range", default: 45, min: 10, max: 80, step: 5, unit: "%" },
-    { key: "pixelSize", label: "입자 크기", type: "range", default: 2, min: 1, max: 4, step: 1, unit: " px" },
+    { key: "pixelSize", label: "입자 크기 (2D 측면)", type: "range", default: 2, min: 1, max: 4, step: 1, unit: " px", showIf: { key: "view", equals: "flat" } },
     { key: "shape", label: "통 모양 (2D 측면)", type: "select", default: "square", showIf: { key: "view", equals: "flat" },
       options: [{ value: "square", label: "사각" }, { value: "round", label: "원형" }] },
     { key: "quality", label: "품질", type: "select", default: "medium",

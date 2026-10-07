@@ -1,0 +1,22 @@
+<!doctype html>
+<!-- 물통 위젯 단독 실행 페이지 (개발용) — `npm run tauri dev` 또는 `npx vite` 가 떠 있을 때
+     http://localhost:1420/src/widgets/water/dev.html?view=iso&scene=boat&fill=45
+     대시보드 창이 다른 창에 덮여 있어도 브라우저에서 물리·그림·입력을 그대로 확인할 수 있다. -->
+<html lang="ko" data-palette="dark" data-theme-mode="solid" data-card-style="glass">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>water dev</title>
+    <style>
+      body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 24px; background: #1b1b22; font: 12px/1.4 monospace; color: #aaa; }
+      .devcard { width: 260px; height: 260px; border-radius: 16px; background: #26262e; border: 1px solid #3a3a46; }
+      .devcard.big { width: 480px; height: 480px; }
+      #info { white-space: pre; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="info"></div>
+    <script type="module" src="./dev.tsx"></script>
+  </body>
+</html>

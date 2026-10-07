@@ -22,6 +22,7 @@ Windows 바탕화면에 상주하는 개인 위젯 대시보드 (Tauri 2 + React
 | `folder` | `providers/folders` | 디스코드식 바로가기 폴더. 인스턴스당 실제 디렉터리 1개. **`settings.source` 가 두 가지를 가른다** — `managed`(전용 폴더를 `%APPDATA%/com.user.deskboard/folders/<instanceId>` 에 만들어 쓴다. `dir` 은 쓰지 않고 저장도 하지 않는다)와 `link`(사용자가 고른 기존 폴더. **없으면 만들지 않고** 위젯이 이유를 보여준다). 드롭 시 이동/복사, `IShellItemImageFactory` 로 아이콘 추출, `notify` 로 변경 감지 |
 | `scrap` | `providers/scrap` | 📰 주제(프롬프트)별 기사·자료 모음. 백엔드 셋(`backend` 설정, 기본 `auto` = 쓸 수 있는 것을 **api → cli → rss** 순으로 시도, 실패하면 다음으로 넘어가고 이유는 `note` 로 남긴다): ① **Claude API 웹 검색**(`api.rs`, `web_search_20260209` + `web_fetch_20260209`, 기본 `claude-opus-5-5` / 선택 `claude-sonnet-5-5`, 구조화 출력은 거부되면 포맷 없이 재요청하는 폴백, API 키는 DPAPI `anthropic.dat`) ② **Claude Code CLI**(`cli.rs`, `claude -p` + WebSearch/WebFetch, 구독 한도 사용. exe 는 PATH → `~/.local/bin` → Claude 데스크톱 앱의 `%APPDATA%/Claude/claude-code/<버전>/<해시>`. 인증은 **Claude 한도 위젯과 공유하는 앱 내 OAuth 로그인**(`claude.json`, 🔑 → 브라우저로 로그인, 터미널 불필요) — `claude_usage::auth::valid_token` 이 만료 전 갱신한 access token 을 `CLAUDE_CODE_OAUTH_TOKEN` 으로 넘긴다. 갱신은 전역 뮤텍스(`refresh_locked`)로 직렬화(리프레시 토큰이 돌아간다). 로그인이 없으면 CLI 자체 로그인에 맡긴다. `claude setup-token` 은 없앴다) ③ **Google 뉴스 RSS**(`rss.rs`, 무료·요약 없음). **구독 OAuth 토큰으로 API 직접 호출은 안 된다**(실측 429 "Error") — 그래서 구독은 CLI 로만 쓴다. 결과는 인스턴스별 `scrap/<instanceId>.json` 캐시 — 재시작해도 다시 부르지 않는다. 자동 갱신 끔/3h/6h/매일, **프롬프트가 바뀌었으면 자동으로 돌리지 않고** 수동 새로고침을 권한다(비용). 웹 내용은 텍스트로만 렌더 |
 | `water` | 없음 | 통에 담긴 픽셀 물. 순수 프론트 — **PIC/FLIP 유체**(`sim.ts`, Müller 의 2D FLIP 구조)를 **통 좌표계**에서 푼다: 통의 이동·회전은 관성력(중력−병진 가속, 원심·오일러·코리올리)으로 들어간다(`container.ts::inertialForces`). 통은 포인터를 스프링으로 따라가 그 가속을 그대로 물에 넘긴다(포인터를 직접 미분하면 잡음으로 폭주). 안쪽 드래그=흔들기, 가장자리=회전, 휠 15°, 더블클릭 원위치. 물리 값은 프리셋(물·꿀·젤리·무중력·달) 또는 "직접 조정"(`params.ts`). **멈춘 물은 비용 0** — 실제 변위(`motion`, 저장된 속도 아님: 고인 물도 g·dt 를 들고 있다)가 1초 작으면 rAF 를 멈춘다. FLIP 은 고인 물에도 잔물결이 남으므로 통을 안 건드리고 물이 거의 멈춘(`CALM_GATE`) 지 2초면 PIC 쪽으로 가라앉힌다(`calmed` — 무조건 걸면 약한 중력의 물이 흐르다 벽에 굳는다). 12초 안전망. 밀도 보정은 **양방향**(`tension`, 벽에 닿은 칸 제외) — 밀어내기만 하면 세게 흔든 물이 흩어진 채 부피가 불어난다 |
+| `merge` | `providers/merge` | 🧩 Merge-2 보드 게임(설계: [docs/MERGE_GAME.md](docs/MERGE_GAME.md) · 규칙 [docs/MERGE_GAME_SPEC.md](docs/MERGE_GAME_SPEC.md)). **Rust 가 게임 상태의 주인** — 조작 1개 = 커맨드 1개 = SQLite 트랜잭션 1개(`merge.sqlite`, `game` 한 행 JSON + 에너지 `ledger` + `stars`), 프론트는 받은 `MergeView` 를 그리기만 한다. 규칙은 `board/orders/progress/energy.rs` 의 순수 함수(`now`·rng 주입, 테스트). 숫자는 `resources/merge-economy.json`(데이터 폴더 같은 이름이 키별로 덮어씀, 깨지면 내장값 전체), 콘텐츠(계열·주민·스킨)는 `merge-content.json` 으로 시드, 시작 보드는 `merge-board.json`. 에너지는 장부 합(`SUM(delta)`, 열 때마다 캐시 교정), **시간 회복은 타이머 없이** 커맨드 들어올 때 `settle_regen` 으로 정산, 클리커는 프론트가 모아 `merge_clicker_add(n)`. ⌨ 키보드 클리커(`keycount.rs`)는 Raw Input(`RIDEV_INPUTSINK`, 메시지 전용 창 스레드)으로 **누른 횟수만** 센다 — 어떤 키인지는 비트맵(자동 반복 제외) 갱신에만 쓰고 버리며 로그에도 남기지 않는다. 기본 꺼짐, 켜진 위젯이 하나라도 있을 때만 돈다 |
 
 새 위젯: [docs/WIDGETS.md](docs/WIDGETS.md) — `widgets/<id>/` 폴더 하나(`widget.json` + `index.tsx`). 재빌드 없이 사용자 폴더에도 둘 수 있다. 셸 설정 파일은 [docs/CONFIG.md](docs/CONFIG.md).
 
@@ -143,6 +144,9 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
     참이다. 입력 요소만 보면 Esc(선택 해제 → 잠금, 팝업 닫기)가 0.25초 뒤 다른 앱으로 갔다.
     이 값은 **프론트가 유일한 진실 원천**이다 — 훅이 지우면 편집 중에 다른 앱을 다녀왔을 때 프론트는
     상태가 그대로라 다시 알리지 않는다.
+  - 위젯이 **키보드를 받아야 하는 영역**(머지 게임의 보드·클리커)은 루트에 `tabIndex` + `data-capture-keys` 를 둔다 —
+    `editable()` 이 `closest("[data-capture-keys]")` 로 입력 요소처럼 인정해 그 안을 누른 뒤에는 입력란과 같이 전경을 유지한다.
+    바탕화면이나 다른 앱을 누르면 저절로 풀린다. 꼭 필요한 위젯에만 쓴다(그동안 대시보드가 앱 위에 머문다).
   - 판단은 전경을 얻을 때(훅)와 **이 값이 참 → 거짓으로 바뀔 때** 예약한다. 앞의 것만 있으면
     입력란에서 치다가 같은 창의 시계를 눌렀을 때 전경이 이미 우리라 영영 판단하지 않는다.
   - **250ms 기다렸다가 판단한다.** 창이 먼저 활성화되고 웹뷰의 포커스 이벤트는 몇 ms 뒤에 온다 —
@@ -219,7 +223,7 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
 - 커맨드 오류는 `Result<_, String>` 사용자 메시지.
 - 편집 모드(잠금 해제)는 저장하지 않는다. 시작 시 항상 잠김.
 - 설정 저장 위치: `%APPDATA%/com.user.deskboard/`
-  - `settings.json` (레이아웃·테마·모니터) · `calendar.sqlite` · `notes.sqlite` · `activity.sqlite`
+  - `settings.json` (레이아웃·테마·모니터) · `calendar.sqlite` · `notes.sqlite` · `activity.sqlite` · `merge.sqlite`(머지 게임 상태·에너지 장부)
   - `widgets/` (사용자 위젯 + 예제 `_example-*`) · `userdata/<instanceId>.json` (위젯 저장소) · `scrap/<instanceId>.json` (스크랩 결과 캐시) · `folders/<instanceId>`
   - `config.jsonc` · `strings.jsonc` · `user.css` (사용자가 만드는 설정 파일) · `*.sample.*` · `widgets/README.md`·`widget.schema.json` (매 시작 덮어쓰는 샘플·문서)
   - `spotify.json` / `claude.json` — 토큰이 **평문**이다. 새로 쓰는 비밀값은 `providers/secrets`

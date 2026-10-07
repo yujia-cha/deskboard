@@ -1,0 +1,15 @@
+{
+  "$schema": "../widget.schema.json",
+  "title": "머지",
+  "icon": "🧩",
+  "description": "아이템을 끌어 합치고 주민의 주문을 채우는 Merge-2 보드 게임",
+  "entry": "index.tsx",
+  "provider": "merge",
+  "defaultSize": { "w": 400, "h": 560 },
+  "minSize": { "w": 240, "h": 400 },
+  "settingsSchema": [
+    { "key": "dayStartHour", "label": "하루 시작 시각", "type": "range", "default": 0, "min": 0, "max": 6, "step": 1, "unit": "시" },
+    { "key": "hints", "label": "힌트 표시", "type": "boolean", "default": true },
+    { "key": "keyNote", "type": "note", "label": "⌨ 를 켜면 다른 앱을 쓰는 중에도 키를 누른 횟수를 셉니다. 횟수만 세고, 어떤 키인지는 기억·저장·전송하지 않습니다." }
+  ]
+}

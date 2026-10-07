@@ -1,0 +1,89 @@
+.merge { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; overflow: hidden; font-size: var(--fs-label); color: var(--text); user-select: none; }
+.merge-loading { align-items: center; justify-content: center; gap: 6px; color: var(--text-dim); }
+
+/* 머리줄 */
+.merge-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: var(--fw-bold); white-space: nowrap; }
+.merge-energy-wrap { display: inline-flex; align-items: baseline; gap: 4px; }
+.merge-energy { display: inline-block; }
+.merge-regen { color: var(--text-dim); font-size: var(--fs-micro); font-weight: var(--fw-label); font-variant-numeric: tabular-nums; }
+
+.merge-btn { background: var(--fill); border: 1px solid transparent; color: var(--text); border-radius: 6px; padding: 0 6px; height: 18px; line-height: 16px; font-size: var(--fs-meta); white-space: nowrap; transition: background var(--dur-fast) var(--ease); }
+.merge-btn:hover:not(:disabled) { background: var(--fill-hover); }
+.merge-btn:disabled { opacity: .4; cursor: default; }
+.merge-btn.ok { color: var(--ok); }
+.merge-btn.gift { margin-left: auto; }
+.merge-btn.key { height: 20px; font-size: var(--fs-label); }
+.merge-btn.key.on { background: var(--accent); color: var(--on-light); }
+
+/* 머리줄 아래 임시 줄·안내 — 레이아웃을 밀지 않게 위에 띄운다 */
+.merge-overlay { position: absolute; left: 0; right: 0; z-index: 5; display: flex; flex-direction: column; gap: 4px; }
+.merge-msg { background: var(--surface-strong); border-radius: 6px; padding: 2px 6px; font-size: var(--fs-meta); }
+.merge-msg.warn { color: var(--warn); }
+.merge-notice { background: var(--surface-strong); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; font-size: var(--fs-meta); display: flex; flex-direction: column; gap: 6px; }
+.merge-notice-btns { display: flex; gap: 6px; justify-content: flex-end; }
+
+/* 주문 */
+.merge-orders { height: 100%; display: flex; gap: 4px; padding: 2px 0; box-sizing: border-box; }
+.merge-order { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; align-items: center; background: var(--fill); border-radius: 8px; padding: 2px 3px; }
+.merge-order.ready { outline: 1px solid var(--ok); }
+.merge-order-wants { display: flex; align-items: center; gap: 2px; font-size: 15px; line-height: 18px; }
+.merge-order-who { margin-right: 2px; }
+.merge-want { position: relative; display: inline-flex; }
+.merge-check { position: absolute; right: -2px; bottom: -2px; font-size: 9px; line-height: 1; color: var(--ok); font-weight: var(--fw-bold); pointer-events: none; }
+.merge-order-btns { display: flex; gap: 3px; }
+.merge-order-btns .merge-btn { height: 16px; line-height: 14px; padding: 0 5px; font-size: var(--fs-micro); }
+
+/* 플레이 영역 (보드·보관함·클리커 — 키보드 포커스를 쥔다) */
+.merge-play { position: relative; display: flex; outline: none; touch-action: none; }
+.merge-play.wide { flex-direction: row; }
+.merge-play.narrow { flex-direction: column; }
+.merge-play.editing { pointer-events: none; }
+.merge-col { display: flex; flex-direction: column; flex: 0 0 auto; }
+
+.merge-grid { display: grid; flex: 0 0 auto; touch-action: none; }
+.merge-cell { width: var(--cell); height: var(--cell); box-sizing: border-box; padding: 1px; font-size: calc(var(--cell) * .6); }
+.merge-cell-in { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--fill); line-height: 1; overflow: hidden; }
+.merge-cell.st-free .merge-cell-in:hover { background: var(--fill-hover); cursor: grab; }
+.merge-cell.st-box .merge-cell-in { background: var(--fill-active); }
+.merge-cell.st-web .merge-cell-in { background: var(--fill-hover); }
+.merge-cell.sel .merge-cell-in { outline: 2px solid var(--accent); outline-offset: -2px; }
+.merge-cell.drag-src .merge-cell-in > * { opacity: .3; }
+.merge-web { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: .55; pointer-events: none; }
+.merge-icon-txt { display: inline-block; }
+.merge-icon-img { width: 1em; height: 1em; object-fit: contain; pointer-events: none; }
+.merge-badge { position: absolute; left: 2px; top: 1px; font-size: var(--fs-micro); line-height: 1; font-weight: var(--fw-bold); background: var(--surface-strong); border-radius: 4px; padding: 1px 3px; }
+.merge-cell .merge-check { font-size: 11px; right: 2px; bottom: 1px; }
+
+.merge-ghost { position: absolute; left: 0; top: 0; z-index: 10; pointer-events: none; display: flex; align-items: center; justify-content: center; font-size: calc(var(--cell) * .7); opacity: .9; will-change: transform; }
+
+/* 정보 줄 */
+.merge-info { display: flex; align-items: center; gap: 4px; box-sizing: border-box; font-size: var(--fs-meta); color: var(--text-dim); min-width: 0; }
+.merge-info-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.merge-play.compact .merge-info-text { display: none; }
+.merge-play.compact .merge-info .merge-btn.gift { margin-left: 0; }
+
+/* 보관함 */
+.merge-storage { display: flex; align-items: center; gap: 6px; box-sizing: border-box; }
+.merge-slots { display: flex; flex: 0 0 auto; height: 100%; touch-action: none; }
+.merge-slots .merge-cell { padding: 3px 1px; height: 100%; font-size: 20px; }
+
+/* 클리커 */
+.merge-clicker-row { display: flex; align-items: center; justify-content: center; }
+.merge-clicker-col { display: flex; align-items: flex-start; justify-content: center; padding-top: 4px; box-sizing: border-box; }
+.merge-clicker { position: relative; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer; touch-action: none; outline: none; }
+.merge-clicker:active { transform: scale(.94); }
+.merge-ring { position: absolute; inset: 0; width: 100%; height: 100%; }
+.merge-ring circle { fill: none; stroke-width: 4; }
+.merge-ring-bg { stroke: var(--track, var(--fill-active)); }
+.merge-ring-fg { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset var(--dur-fast) var(--ease); }
+.merge-clicker-icon { font-size: 28px; line-height: 1; pointer-events: none; }
+
+/* G-4 · H-2 강조 — transform/opacity 만, reduced-motion 은 테두리로 (H-3) */
+@keyframes merge-shake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-3px); } 40% { transform: translateX(3px); } 60% { transform: translateX(-2px); } 80% { transform: translateX(2px); } }
+@keyframes merge-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+.merge-energy.shake { animation: merge-shake .4s var(--ease) 1; color: var(--warn); }
+.merge-clicker.hint { animation: merge-pulse .6s var(--ease) 3; }
+@media (prefers-reduced-motion: reduce) {
+  .merge-energy.shake { animation: none; outline: 1px solid var(--warn); border-radius: 4px; }
+  .merge-clicker.hint { animation: none; outline: 2px solid var(--warn); }
+}

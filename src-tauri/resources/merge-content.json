@@ -1,0 +1,79 @@
+{
+  "chains": [
+    { "id": "clean", "kind": "item", "name": "청소", "unlockLevel": 1, "levels": [
+      { "name": "거품", "icon": { "emoji": "🫧" } },
+      { "name": "비누", "icon": { "emoji": "🧼" } },
+      { "name": "스펀지", "icon": { "emoji": "🧽" } },
+      { "name": "세제", "icon": { "emoji": "🧴" } },
+      { "name": "양동이", "icon": { "emoji": "🪣" } },
+      { "name": "빗자루", "icon": { "emoji": "🧹" } },
+      { "name": "빨래 바구니", "icon": { "emoji": "🧺" } },
+      { "name": "욕조", "icon": { "emoji": "🛁" } }
+    ] },
+    { "id": "garden", "kind": "item", "name": "정원", "unlockLevel": 1, "levels": [
+      { "name": "새싹", "icon": { "emoji": "🌱" } },
+      { "name": "풀잎", "icon": { "emoji": "🌿" } },
+      { "name": "클로버", "icon": { "emoji": "☘️" } },
+      { "name": "화분", "icon": { "emoji": "🪴" } },
+      { "name": "튤립", "icon": { "emoji": "🌷" } },
+      { "name": "해바라기", "icon": { "emoji": "🌻" } },
+      { "name": "나무", "icon": { "emoji": "🌳" } },
+      { "name": "꽃나무", "icon": { "emoji": "🌸" } }
+    ] },
+    { "id": "cook", "kind": "item", "name": "요리", "unlockLevel": 3, "levels": [
+      { "name": "달걀", "icon": { "emoji": "🥚" } },
+      { "name": "달걀프라이", "icon": { "emoji": "🍳" } },
+      { "name": "팬케이크", "icon": { "emoji": "🥞" } },
+      { "name": "와플", "icon": { "emoji": "🧇" } },
+      { "name": "컵케이크", "icon": { "emoji": "🧁" } },
+      { "name": "조각 케이크", "icon": { "emoji": "🍰" } },
+      { "name": "생일 케이크", "icon": { "emoji": "🎂" } }
+    ] },
+    { "id": "tools", "kind": "item", "name": "공구", "unlockLevel": 5, "levels": [
+      { "name": "볼트", "icon": { "emoji": "🔩" } },
+      { "name": "렌치", "icon": { "emoji": "🔧" } },
+      { "name": "드라이버", "icon": { "emoji": "🪛" } },
+      { "name": "망치", "icon": { "emoji": "🔨" } },
+      { "name": "톱", "icon": { "emoji": "🪚" } },
+      { "name": "톱니바퀴", "icon": { "emoji": "⚙️" } },
+      { "name": "공구 세트", "icon": { "emoji": "🛠️" } }
+    ] },
+    { "id": "sew", "kind": "item", "name": "바느질", "unlockLevel": 7, "levels": [
+      { "name": "실", "icon": { "emoji": "🧵" } },
+      { "name": "털실", "icon": { "emoji": "🧶" } },
+      { "name": "양말", "icon": { "emoji": "🧦" } },
+      { "name": "장갑", "icon": { "emoji": "🧤" } },
+      { "name": "목도리", "icon": { "emoji": "🧣" } },
+      { "name": "티셔츠", "icon": { "emoji": "👕" } },
+      { "name": "코트", "icon": { "emoji": "🧥" } }
+    ] },
+    { "id": "gen_box", "kind": "generator", "name": "도구함", "unlockLevel": 1, "maxLevel": 5,
+      "icon": { "emoji": "🧰" }, "emits": ["clean", "tools"] },
+    { "id": "gen_cart", "kind": "generator", "name": "장바구니", "unlockLevel": 1, "maxLevel": 5,
+      "icon": { "emoji": "🛒" }, "emits": ["garden", "cook"] },
+    { "id": "gen_sew", "kind": "generator", "name": "반짇고리", "unlockLevel": 7, "maxLevel": 5,
+      "icon": { "emoji": "🪡" }, "emits": ["sew"] }
+  ],
+  "residents": [
+    { "id": "parrot", "name": "앵무", "icon": { "emoji": "🦜" }, "likes": ["clean"], "joinLevel": 1 },
+    { "id": "rabbit", "name": "토끼", "icon": { "emoji": "🐰" }, "likes": ["garden"], "joinLevel": 1 },
+    { "id": "cat", "name": "고양이", "icon": { "emoji": "🐱" }, "likes": ["cook"], "joinLevel": 3 },
+    { "id": "dog", "name": "강아지", "icon": { "emoji": "🐶" }, "likes": ["tools"], "joinLevel": 5 },
+    { "id": "fox", "name": "여우", "icon": { "emoji": "🦊" }, "likes": ["sew"], "joinLevel": 7 },
+    { "id": "bear", "name": "곰", "icon": { "emoji": "🐻" }, "likes": [], "joinLevel": 9 }
+  ],
+  "skins": {
+    "clicker": { "emoji": "🐹" },
+    "box": { "emoji": "📦" },
+    "web": { "emoji": "🕸" },
+    "gift": { "emoji": "🎁" }
+  },
+  "levelRewards": {
+    "2": [{ "gift": ["clean:2", "clean:2", "garden:2", "garden:2"] }],
+    "4": [{ "item": "gen_box:1" }],
+    "6": [{ "item": "gen_cart:1" }],
+    "8": [{ "gift": ["any:4", "any:4"] }],
+    "10": [{ "gift": ["any:5"] }],
+    "evenAfter10": [{ "gift": ["any:5"] }]
+  }
+}

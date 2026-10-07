@@ -38,7 +38,7 @@ export default function App() {
   useEffect(() => {
     // HTML 위젯(iframe) 안의 입력란은 셸에서 보이지 않는다 — 브리지가 알려 준 표시(data-editable)를 믿는다.
     const editable = (el: Element | null) =>
-      !!el && (el.matches("input, textarea, select, iframe[data-editable='1']") || (el as HTMLElement).isContentEditable);
+      !!el && (el.matches("input, textarea, select, iframe[data-editable='1']") || (el as HTMLElement).isContentEditable || !!el.closest("[data-capture-keys]"));
     // focusout 은 새 포커스가 정해지기 **전에** 오므로 한 틱 뒤에 읽는다.
     const report = () => setTimeout(() => setTextFocus(editable(document.activeElement)), 0);
     document.addEventListener("focusin", report);

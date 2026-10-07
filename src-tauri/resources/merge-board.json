@@ -1,0 +1,15 @@
+{
+  "cells": [
+    ["box:cook:1","box:cook:2","box:clean:1","box:garden:1","box:clean:2","box:tools:3","box:tools:2"],
+    ["box:garden:2","box:clean:1","box:garden:1","box:gen_box:1","box:clean:2","box:gift:a","box:garden:2"],
+    ["box:clean:1","box:garden:1","web:garden:2","web:clean:2","web:garden:1","box:clean:2","box:garden:2"],
+    ["box:clean:1","web:clean:1","","clean:1","","web:garden:2","box:garden:1"],
+    ["box:clean:2","web:garden:1","gen_box:1","","gen_cart:1","web:clean:3","box:garden:2"],
+    ["box:clean:1","web:clean:2","","garden:1","","web:clean:1","box:garden:1"],
+    ["box:clean:2","box:garden:2","web:garden:1","web:clean:1","web:clean:2","box:clean:1","box:garden:1"],
+    ["box:clean:2","box:gift:b","box:garden:2","box:clean:1","box:garden:1","box:clean:2","box:garden:2"],
+    ["box:cook:3","box:cook:1","box:clean:1","box:garden:1","box:clean:2","box:tools:2","box:tools:1"]
+  ],
+  "gifts": { "a": ["clean:2", "clean:2"], "b": ["garden:2", "garden:2"] },
+  "orders": [{ "parrot": ["clean:2"] }, { "rabbit": ["garden:2"] }]
+}

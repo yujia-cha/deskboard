@@ -25,6 +25,11 @@ describe("widget registry", () => {
       for (const f of w.settingsSchema ?? []) {
         if (f.type === "boolean") expect(typeof d[f.key]).toBe("boolean");
         if (f.type === "number") expect(typeof d[f.key]).toBe("number");
+        if (f.type === "range") {
+          expect(typeof d[f.key]).toBe("number");
+          expect(f.min).toBeLessThanOrEqual(f.default);
+          expect(f.default).toBeLessThanOrEqual(f.max);
+        }
         if (f.type === "select") expect(f.options.some((o) => o.value === f.default)).toBe(true);
       }
     }

@@ -32,6 +32,11 @@ export const helloWidget: WidgetDefinition<HelloSettings> = {
 };
 ```
 
+`type: "range"` 필드(`min`·`max`·`step` 필수, `unit` 선택)는 값이 오른쪽에 붙은 슬라이더가 된다. 움직이는 즉시 저장·반영되므로 물리 값처럼 "만지며 맞추는" 값에 쓴다:
+```ts
+    { key: "gravity", label: "중력", type: "range", default: 9.8, min: 0, max: 30, step: 0.1, unit: " m/s²" },
+```
+
 `type: "path"` 필드(`pick: "image" | "directory"`)를 선언하면 설정 패널에 텍스트 + "찾아보기"(`@tauri-apps/plugin-dialog` `open()`) + "지우기" 버튼이 자동 생성된다:
 ```ts
     { key: "bg", label: "배경 이미지", type: "path", pick: "image", default: "" },

@@ -17,6 +17,8 @@ export type SettingField = FieldBase &
   (
     | { type: "boolean"; default: boolean }
     | { type: "number"; default: number; min?: number; max?: number; step?: number }
+    /** 슬라이더 — 값을 움직이며 바로 결과를 볼 때 (물리 값 등). `unit` 은 숫자 뒤에 붙는다. */
+    | { type: "range"; default: number; min: number; max: number; step: number; unit?: string }
     | { type: "text"; default: string; placeholder?: string }
     | { type: "select"; default: string; options: { value: string; label: string }[] }
     | { type: "path"; pick: "image" | "directory"; default: string }

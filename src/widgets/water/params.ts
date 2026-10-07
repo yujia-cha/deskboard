@@ -72,6 +72,8 @@ export function physicsOf(s: Partial<WaterSettings>): Physics {
   return out;
 }
 
+const TENSION = 0.6;
+
 const PRESSURE_ITERS: Record<Quality, number> = { low: 20, medium: 40, high: 80 };
 
 /** 사람이 고르는 0~100 값을 솔버 계수로 옮긴다. */
@@ -84,6 +86,11 @@ export function simParamsOf(p: Physics, quality: Quality = "medium"): SimParams 
     viscosity: visc === 0 ? 0 : 0.95 * Math.pow(visc, 1.5),
     viscosityPasses: 1 + Math.floor(visc * 3),
     cohesion: (clamp(p.cohesion, 0, 100) / 100) * 0.15,
+    // 성긴 칸 되돌리기 — 0.6 은 세게 흔든 뒤에도 부피를 ±5% 로 지킨다 (실측). 응집에 따라 키우지
+    // 않는다: 1 을 넘기면 벽 쪽(당기지 않음)과 자유 표면 쪽(당김)의 비대칭이 커져 무중력 물덩어리가
+    // 벽에서 스스로 걸어 나가고(2초에 통의 9%), 원형 통에서는 진동이 남아 잠들지 못했다.
+    // 물방울을 뭉치는 일은 입자 단위 응집(cohesion)이 맡는다.
+    tension: TENSION,
     friction: (clamp(p.wallFriction, 0, 100) / 100) * 0.3,
     restitution: (clamp(p.bounce, 0, 100) / 100) * 0.9,
     // 끈적할수록 더 빨리 잦아든다. 물도 0 은 아니다 — 몇 초 안에 멈춰야 루프가 잠든다.
@@ -93,8 +100,15 @@ export function simParamsOf(p: Physics, quality: Quality = "medium"): SimParams 
   };
 }
 
-/** 통을 건드리지 않고 이만큼 지나면 잔물결을 가라앉히기 시작한다 (s) */
+/** 통을 건드리지 않고 물이 거의 멈춘(`CALM_GATE` 아래) 채 이만큼 지나면 잔물결을 가라앉히기 시작한다 (s) */
 export const CALM_AFTER = 2;
+/**
+ * 이보다 빨리 움직이는 동안(실제 변위, m/s)은 가라앉히기 시계가 가지 않는다.
+ * 손을 뗀 지 2초면 무조건 걸던 때는 중력이 약한 물(달)이 흐르던 도중에 굳어 벽에 걸린 채
+ * 잠들었다 (실측: 통을 눕히면 반대쪽 벽에 물의 21~40%, 이 문턱으로 2% 아래).
+ * 중력에 비례시키면 달은 잔떨림 바닥(≈0.05)을 못 넘어 아예 잠들지 못했다.
+ */
+export const CALM_GATE = 0.15;
 /** 그 뒤 이만큼에 걸쳐 완전히 가라앉힌다 (s) */
 export const CALM_RAMP = 1.5;
 

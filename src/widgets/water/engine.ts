@@ -13,7 +13,7 @@ import {
   angleDelta, boundsFor, boxSettled, grabMode, homeAngle, inertialForces, newBox, stepBox,
   type Bounds, type BoxState, type BoxTargets,
 } from "./container";
-import { CALM_AFTER, CALM_RAMP, calmed, physicsOf, simParamsOf, type Physics, type WaterSettings } from "./params";
+import { CALM_AFTER, CALM_GATE, CALM_RAMP, calmed, physicsOf, simParamsOf, type Physics, type WaterSettings } from "./params";
 import { newRaster, rasterize, type Raster, type Rgb } from "./render";
 import type { SimParams } from "./sim";
 
@@ -30,7 +30,7 @@ const SLEEP_AFTER = 1;
  * 실측으로는 모든 프리셋이 4~10초 안에 잠들지만, 어떤 조합이 끝내 떨면 60fps 를 영영 돌게 된다.
  * 그 무렵의 떨림은 1~2 px 라 멈춘 그림과 구별되지 않는다.
  */
-const FORCE_SLEEP_QUIET = 12;
+const FORCE_SLEEP_IDLE = 12;
 /** 휠 한 칸 = 15° */
 const WHEEL_STEP = Math.PI / 12;
 
@@ -70,8 +70,10 @@ export class WaterEngine {
   private acc = 0;
   /** 고인 상태가 이어진 시간 (s) — SLEEP_AFTER 를 넘으면 잠든다 */
   private still = 0;
-  /** 통을 마지막으로 건드린 뒤 흐른 시간 (s) — 잔물결 가라앉히기 */
+  /** 통을 건드리지 않았고 물도 거의 멈춘 채 흐른 시간 (s) — 잔물결 가라앉히기 */
   private quiet = 0;
+  /** 통을 마지막으로 건드린 뒤 흐른 시간 (s) — 안전망 */
+  private idle = 0;
 
   private water: Rgb = { r: 124, g: 156, b: 255 };
   private fillColor = "transparent";
@@ -207,6 +209,7 @@ export class WaterEngine {
   /** 통을 건드렸다 — 잔물결 가라앉히기를 처음부터, 그리고 깨운다. */
   private disturb() {
     this.quiet = 0;
+    this.idle = 0;
     this.still = 0;
     this.wake();
   }
@@ -231,7 +234,10 @@ export class WaterEngine {
     while (this.acc >= DT && steps < MAX_STEPS) {
       stepBox(this.box, this.targets, boxDt, this.bounds);
       const settled = !this.drag && boxSettled(this.box, this.targets);
-      this.quiet = settled ? this.quiet + boxDt : 0;
+      this.idle = settled ? this.idle + boxDt : 0;
+      // 물이 아직 흐르는 동안은 가라앉히기 시계를 멈춰 둔다(0 으로 되돌리지는 않는다).
+      if (!settled) this.quiet = 0;
+      else if (sim.motion() < CALM_GATE) this.quiet += boxDt;
       const forces = inertialForces(this.box, {
         gravity: this.physics.gravity,
         gravityDirDeg: this.physics.gravityDir,
@@ -247,7 +253,7 @@ export class WaterEngine {
 
     const resting = !this.drag && boxSettled(this.box, this.targets) && sim.motion() < SLEEP_MOTION;
     this.still = resting ? this.still + real : 0;
-    const asleep = this.still >= SLEEP_AFTER || this.quiet >= FORCE_SLEEP_QUIET;
+    const asleep = this.still >= SLEEP_AFTER || this.idle >= FORCE_SLEEP_IDLE;
     if (!asleep && !document.hidden) this.raf = requestAnimationFrame(this.frame);
   };
 

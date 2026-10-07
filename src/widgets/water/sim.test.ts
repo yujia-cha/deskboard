@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BOX, FlipSim, MAX_PARTICLES, resolutionFor, type Forces, type Shape } from "./sim";
 import { calmed, PRESETS, simParamsOf } from "./params";
+import { newRaster, rasterize } from "./render";
 
 const DT = 1 / 120;
 const water = simParamsOf(PRESETS.water);
@@ -74,6 +75,44 @@ describe("FlipSim", () => {
     const sim = new FlipSim({ res: 40, fill: 0.4, shape: "square" });
     run(sim, 0.4, () => ({ ax: -20, ay: 9.8, omega: 0, alpha: 0 })); // a = g − A_box
     expect(sim.centerOfMass().x).toBeLessThan(BOX / 2 - 0.05);
+  });
+
+  it.each(["zerog", "water"] as const)("세게 흔든 뒤에도 물이 흩어져 불어나지 않는다 (%s)", (preset) => {
+    // 밀도 보정이 밀어내기만 하면 흩어진 물이 그대로 남아 통을 다 덮는다 (실측: 무중력 45% → 70%).
+    const area = (s: FlipSim) => {
+      const r = newRaster(s.res);
+      rasterize(s, r, { r: 0, g: 0, b: 0 });
+      let n = 0;
+      for (let i = 0; i < r.occ.length; i++) if (r.occ[i]) n++;
+      return n;
+    };
+    const sim = new FlipSim({ res: 40, fill: 0.45, shape: "square" });
+    const before = area(sim);
+    const p = simParamsOf(PRESETS[preset]);
+    const g = PRESETS[preset].gravity;
+    run(sim, 1.2, (t) => ({
+      ax: 60 * Math.sign(Math.sin(t * 25)), ay: g + 30 * Math.cos(t * 17),
+      omega: 6 * Math.sin(t * 7), alpha: 200 * Math.cos(t * 7),
+    }), p);
+    run(sim, 4, () => still(g), p);
+    expect(area(sim) / before).toBeLessThan(1.1);
+  });
+
+  it("벽에 물 막이 들러붙지 않는다 — 중력을 옆으로 돌리면 반대쪽 벽은 비어 있다", () => {
+    const sim = new FlipSim({ res: 40, fill: 0.45, shape: "square" });
+    run(sim, 1, (t) => ({ ax: 40 * Math.sin(t * 20), ay: 9.8, omega: 0, alpha: 0 }));
+    run(sim, 4, () => ({ ax: -9.8, ay: 0, omega: 0, alpha: 0 }));
+    const r = newRaster(sim.res);
+    rasterize(sim, r, { r: 0, g: 0, b: 0 });
+    let all = 0, far = 0;
+    for (let y = 0; y < r.res; y++) {
+      for (let x = 0; x < r.res; x++) {
+        if (!r.occ[y * r.res + x]) continue;
+        all++;
+        if (x > r.res * 0.6) far++;
+      }
+    }
+    expect(far / all).toBeLessThan(0.01);
   });
 
   it("무중력에서는 질량중심이 제자리에 있다", () => {

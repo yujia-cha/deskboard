@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { angleDelta, boundsFor, boxSettled, grabMode, homeAngle, inertialForces, newBox, stepBox, type BoxTargets } from "./container";
+import { inertialForces3, MAX_PITCH, angleDelta, boundsFor, boxSettled, grabMode, homeAngle, inertialForces, newBox, stepBox, type BoxTargets } from "./container";
 
 const DT = 1 / 120;
 const wide = { minX: -1e6, maxX: 1e6, minY: -1e6, maxY: 1e6 };
@@ -101,5 +101,44 @@ describe("관성력", () => {
     expect(Math.hypot(f.ax, f.ay)).toBeLessThanOrEqual(60 + 1e-9);
     expect(Math.abs(f.omega)).toBeLessThanOrEqual(25);
     expect(Math.abs(f.alpha)).toBeLessThanOrEqual(300);
+  });
+});
+
+describe("inertialForces3 (등각 기울이기)", () => {
+  const opts = { gravity: 9.8, gravityDirDeg: 0, inertia: 1, boxPx: 200 };
+  it("정지한 통에서는 중력이 똑바로 아래(+y)다", () => {
+    const f = inertialForces3(newBox(0, 0), opts);
+    expect(f.ax).toBeCloseTo(0); expect(f.ay).toBeCloseTo(9.8); expect(f.az).toBeCloseTo(0);
+    expect(Math.hypot(f.wx, f.wy, f.wz)).toBe(0);
+  });
+  it("앞으로 90° 기울이면 중력이 보는 사람 쪽(+x+z)으로 눕는다", () => {
+    const b = newBox(0, 0); b.ph = Math.PI / 2;
+    const f = inertialForces3(b, opts);
+    expect(f.ax).toBeCloseTo(9.8 * Math.SQRT1_2); expect(f.az).toBeCloseTo(9.8 * Math.SQRT1_2); expect(f.ay).toBeCloseTo(0);
+  });
+  it("좌우로 90° 기울이면 중력이 화면 왼쪽(−x+z)으로 눕는다", () => {
+    const b = newBox(0, 0); b.rl = Math.PI / 2;
+    const f = inertialForces3(b, opts);
+    expect(f.ax).toBeCloseTo(-9.8 * Math.SQRT1_2); expect(f.az).toBeCloseTo(9.8 * Math.SQRT1_2); expect(f.ay).toBeCloseTo(0);
+  });
+  it("화면 오른쪽으로 밀면 물은 화면 왼쪽(−x+z)으로 쏠린다", () => {
+    const b = newBox(0, 0); b.ax = 500; // px/s² → 500·(1.5/200) = 3.75 m/s²
+    const f = inertialForces3(b, opts);
+    expect(f.ax).toBeLessThan(0); expect(f.az).toBeGreaterThan(0); expect(f.ax).toBeCloseTo(-f.az);
+    expect(f.ay).toBeCloseTo(9.8);
+  });
+  it("기울기 각속도는 축 성분으로 들어가고 상한을 지킨다", () => {
+    const b = newBox(0, 0); b.wp = 100; b.wr = -100;
+    const f = inertialForces3(b, opts);
+    expect(Math.hypot(f.wx, f.wy, f.wz)).toBeLessThanOrEqual(25 * Math.SQRT2 + 1e-6);
+    expect(f.wy).toBe(0);
+  });
+  it("기울기 스프링은 목표로 가고 상한에서 멈춘다", () => {
+    const b = newBox(100, 100);
+    const t = { pos: null, ang: null, pitch: 0.4, roll: -2 };
+    const bounds = { minX: 0, maxX: 200, minY: 0, maxY: 200 };
+    for (let i = 0; i < 600; i++) stepBox(b, t, 1 / 120, bounds);
+    expect(b.ph).toBeCloseTo(0.4, 2);
+    expect(b.rl).toBeCloseTo(-MAX_PITCH, 2);
   });
 });

@@ -14,7 +14,7 @@ export const waterWidget: WidgetDefinition<WaterSettings> = {
   defaultSize: { w: 200, h: 200 },
   minSize: { w: 120, h: 120 },
   settingsSchema: [
-    { key: "note", type: "note", label: "통 안쪽을 끌면 흔들고, 가장자리(점선 고리)를 세로로 끌면 기울입니다(2D 보기에서는 돌립니다). 물체는 집어서 옮길 수 있습니다. 휠: 기울이기 · 더블클릭: 원위치." },
+    { key: "note", type: "note", label: "통 안쪽을 끌면 흔들고, 가장자리(점선 고리)를 끌면 그쪽으로 기울입니다 — 세로는 앞뒤, 가로는 좌우 (2D 보기에서는 돌립니다). 물체는 집어서 옮기거나 물속에 넣을 수 있습니다. 휠: 앞뒤 기울이기 · 더블클릭: 원위치. 장면(물성·통 모양·물체·법칙)은 scene.ts 를 고쳐 바꿉니다." },
     { key: "view", label: "보기", type: "select", default: "iso",
       options: [
         { value: "iso", label: "등각 3D (복셀)" },

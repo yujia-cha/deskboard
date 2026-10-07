@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { facePixels, isoLayout, newIsoBuffer, paintIso, pickAt, project, U } from "./iso";
+import { causticAt, facePixels, isoLayout, newIsoBuffer, paintIso, pickAt, project, U } from "./iso";
 import { AIR, BODY0, extrude2d, newField, splat3, surfaceAt, vIdx, WATER } from "./voxels";
 import { newRaster } from "./render";
 import { FlipSim3 } from "./sim3";
@@ -92,6 +92,29 @@ describe("iso", () => {
     expect(pickAt(buf, b.sx, b.sy)).toBe(BODY0);
     expect(pickAt(buf, 0, 0)).toBe(AIR);
     expect(pickAt(buf, -5, 3)).toBe(AIR);
+  });
+});
+
+describe("caustics", () => {
+  it("옆면 일부만 밝아지고 시간이 가면 자리가 바뀐다", () => {
+    const res = 10;
+    const f = newField(res);
+    for (let ix = 0; ix < res; ix++) for (let iz = 0; iz < res; iz++) for (let iy = 3; iy < res; iy++) f.mat[vIdx(res, ix, iy, iz)] = WATER;
+    const l = isoLayout(res);
+    const plain = newIsoBuffer(l), lit = newIsoBuffer(l), later = newIsoBuffer(l);
+    paintIso(f, l, plain, pal);
+    paintIso(f, l, lit, pal, { caustics: true, t: 0 });
+    paintIso(f, l, later, pal, { caustics: true, t: 2 });
+    let diff = 0, diffT = 0;
+    for (let i = 0; i < plain.rgba.length; i += 4) { if (plain.rgba[i] !== lit.rgba[i]) diff++; if (lit.rgba[i] !== later.rgba[i]) diffT++; }
+    expect(diff).toBeGreaterThan(0);
+    expect(diff).toBeLessThan(painted(plain) / 2); // 얼룩은 일부
+    expect(diffT).toBeGreaterThan(0);
+    // 윗면(수면)은 그대로
+    const top = Math.round(100 + 155 * 0.25);
+    expect(countColor(lit, top)).toBe(countColor(plain, top));
+    let on = 0; for (let i = 0; i < 1000; i++) if (causticAt(i % 10, (i / 10) % 10 | 0, (i / 100) | 0, 0.5)) on++;
+    expect(on).toBeGreaterThan(50); expect(on).toBeLessThan(500);
   });
 });
 

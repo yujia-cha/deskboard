@@ -73,9 +73,9 @@ export const ice: BodySpec = {
 // --- 장면 -------------------------------------------------------------------------
 
 export const SCENES: Record<string, Scene> = {
-  default: { label: "물통", bodies: [] },
-  boat: { label: "낚싯배", bodies: [boat] },
-  pond: { label: "연못 (오리·돌)", bodies: [duck, stone], fluid: { preset: "water" } },
+  default: { label: "물통", bodies: [], render: { caustics: true } },
+  boat: { label: "낚싯배", bodies: [boat], render: { caustics: true } },
+  pond: { label: "연못 (오리·돌)", bodies: [duck, stone], fluid: { preset: "water" }, render: { caustics: true } },
   ice: { label: "얼음 조각", bodies: [ice] },
   catears: {
     label: "고양이 귀 (표면이 늘 귀 모양)",

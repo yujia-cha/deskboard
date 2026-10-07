@@ -52,11 +52,27 @@ export interface IsoPalette {
   bodies: Rgb[];
 }
 
+export interface IsoOptions {
+  /** 옆면에 일렁이는 빛 무늬 */
+  caustics?: boolean;
+  /** 무늬의 시각 (s) — 잠든 뒤에는 그리지 않으므로 저절로 멈춘다 */
+  t?: number;
+}
+
 const TOP_LIGHT = 0.25;
 const LEFT_DARK = 0.22;
 /** 윗면 가장자리(옆이 공기인 물) — 수면 윤곽 */
 const RIM_LIGHT = 0.18;
 const FOAM_LIGHT = 0.5;
+/** caustic 한 칸의 밝힘과 문턱 — 사인파 둘의 곱이 문턱을 넘는 복셀 면만 밝힌다 (픽셀아트의 얼룩) */
+const CAUSTIC_LIGHT = 0.22;
+const CAUSTIC_THRESHOLD = 0.55;
+
+/** 옆면 복셀 (ix, iy, iz) 가 이 시각에 caustic 얼룩인가 */
+export function causticAt(ix: number, iy: number, iz: number, t: number): boolean {
+  const a = Math.sin(1.9 * ix + 1.3 * iy - 1.6 * t) * Math.sin(1.4 * iz - 1.1 * iy + 1.2 * t + 0.7);
+  return a > CAUSTIC_THRESHOLD;
+}
 
 /** 면 마스크 — 윗면 중심 기준 픽셀 오프셋 (px, py 쌍) */
 interface Masks { top: Int8Array; left: Int8Array; right: Int8Array }
@@ -83,7 +99,9 @@ function masks(u: number): Masks {
 const lighten = (c: number, t: number) => c + (255 - c) * t;
 const darken = (c: number, t: number) => c * (1 - t);
 
-export function paintIso(f: VoxelField, l: IsoLayout, out: IsoBuffer, pal: IsoPalette) {
+export function paintIso(f: VoxelField, l: IsoLayout, out: IsoBuffer, pal: IsoPalette, opts: IsoOptions = {}) {
+  const caustics = !!opts.caustics;
+  const t = opts.t ?? 0;
   const { res, mat, foam } = f;
   const { u, ox, bufW } = l;
   const { rgba, pick } = out;
@@ -127,8 +145,13 @@ export function paintIso(f: VoxelField, l: IsoLayout, out: IsoBuffer, pal: IsoPa
           t = Math.min(1, t);
           blit(mk.top, cx, cy, lighten(c.r, t), lighten(c.g, t), lighten(c.b, t), m);
         }
-        if (rightV) blit(mk.right, cx, cy, c.r, c.g, c.b, m);
-        if (leftV) blit(mk.left, cx, cy, darken(c.r, LEFT_DARK), darken(c.g, LEFT_DARK), darken(c.b, LEFT_DARK), m);
+        // 옆면 — 수면 바로 아래부터 일렁이는 빛 무늬 (윗면이 보이는 복셀은 수면이라 뺀다)
+        const ca = caustics && m === WATER && !topV && causticAt(ix, iy, iz, t) ? CAUSTIC_LIGHT : 0;
+        if (rightV) blit(mk.right, cx, cy, lighten(c.r, ca), lighten(c.g, ca), lighten(c.b, ca), m);
+        if (leftV) {
+          const d = LEFT_DARK - ca;
+          blit(mk.left, cx, cy, darken(c.r, d), darken(c.g, d), darken(c.b, d), m);
+        }
       }
     }
   }

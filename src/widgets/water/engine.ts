@@ -52,7 +52,7 @@ const DEBUG_OVERLAY = false;
 
 type Drag =
   | { mode: "move"; id: number; offX: number; offY: number }
-  | { mode: "rotate"; id: number; lastA: number; lastY: number }
+  | { mode: "rotate"; id: number; lastA: number; lastX: number; lastY: number }
   | { mode: "body"; id: number; body: Body; lastX: number; lastY: number };
 
 export class WaterEngine {
@@ -91,7 +91,7 @@ export class WaterEngine {
   private bounds: Bounds = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
   private home = { x: 0, y: 0 };
   private box: BoxState = newBox(0, 0);
-  private targets: BoxTargets = { pos: null, ang: 0, pitch: 0 };
+  private targets: BoxTargets = { pos: null, ang: 0, pitch: 0, roll: 0 };
   private placed = false;
 
   private drag: Drag | null = null;
@@ -155,7 +155,7 @@ export class WaterEngine {
     return {
       view: this.view, res: this.layout?.res ?? this.sim?.res ?? 0, count: this.sim3?.count ?? this.sim?.count ?? 0, K: this.K,
       w: this.w, h: this.h, motion: this.motion(), still: this.still, quiet: this.quiet, idle: this.idle, raf: !!this.raf,
-      frames: this.frames, steps: this.stepsTotal, ph: b.ph, th: b.th, box: [b.x, b.y], home: [this.home.x, this.home.y],
+      frames: this.frames, steps: this.stepsTotal, ph: b.ph, rl: b.rl, th: b.th, box: [b.x, b.y], home: [this.home.x, this.home.y],
       settled: boxSettled(b, this.targets), field: this.field, bodies: this.bodySet.bodies.map((x) => ({ pos: x.pos, vel: x.vel, sub: x.submerged })),
     };
   }
@@ -259,7 +259,7 @@ export class WaterEngine {
 
     if (!this.placed) {
       this.box = newBox(this.home.x, this.home.y);
-      this.targets = { pos: { ...this.home }, ang: 0, pitch: 0 };
+      this.targets = { pos: { ...this.home }, ang: 0, pitch: 0, roll: 0 };
       this.placed = true;
     } else {
       const t = this.targets.pos;
@@ -417,7 +417,8 @@ export class WaterEngine {
     if (!field || !layout || !isoBuf || !img) return;
     if (this.sim3) { splat3(this.sim3, field); paintBodies(this.bodySet, field); }
     else if (this.sim && this.raster) { rasterize(this.sim, this.raster, this.water); extrude2d(this.raster, field); }
-    paintIso(field, layout, isoBuf, { water: this.water, bodies: this.bodyColors });
+    paintIso(field, layout, isoBuf, { water: this.water, bodies: this.bodyColors },
+      { caustics: !!this.scene.render?.caustics, t: this.sim3?.t ?? 0 });
     img.data.set(isoBuf.rgba);
     this.offCtx.putImageData(img, 0, 0);
 
@@ -575,9 +576,9 @@ export class WaterEngine {
       this.drag = { mode, id: e.pointerId, offX: p.x - this.box.x, offY: p.y - this.box.y };
       this.targets.pos = { x: this.box.x, y: this.box.y };
     } else {
-      this.drag = { mode, id: e.pointerId, lastA: Math.atan2(p.y - this.box.y, p.x - this.box.x), lastY: p.y };
+      this.drag = { mode, id: e.pointerId, lastA: Math.atan2(p.y - this.box.y, p.x - this.box.x), lastX: p.x, lastY: p.y };
       if (this.view === "flat") this.targets.ang = this.box.th;
-      else this.targets.pitch = this.box.ph;
+      else { this.targets.pitch = this.box.ph; this.targets.roll = this.box.rl; }
     }
     this.canvas.style.cursor = "grabbing";
     this.disturb();
@@ -606,9 +607,13 @@ export class WaterEngine {
       this.targets.ang = (this.targets.ang ?? this.box.th) + angleDelta(a, d.lastA);
       d.lastA = a;
     } else {
-      // 등각: 세로로 끈 만큼 기울인다 — 통 높이만큼 끌면 90°
-      const t = (this.targets.pitch ?? this.box.ph) + ((p.y - d.lastY) / Math.max(1, this.boxPx)) * (Math.PI / 2);
+      // 등각: 끈 방향으로 물이 쏠리게 기울인다 — 세로 = 앞뒤(pitch), 가로 = 좌우(roll). 통 크기만큼 끌면 90°
+      const k = (Math.PI / 2) / Math.max(1, this.boxPx);
+      const t = (this.targets.pitch ?? this.box.ph) + (p.y - d.lastY) * k;
       this.targets.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, t));
+      const r = (this.targets.roll ?? this.box.rl) - (p.x - d.lastX) * k; // 오른쪽으로 끌면 물이 오른쪽(−roll)
+      this.targets.roll = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, r));
+      d.lastX = p.x;
       d.lastY = p.y;
     }
     this.disturb();
@@ -626,13 +631,14 @@ export class WaterEngine {
       return;
     }
     if (this.settings.returnHome) {
-      this.targets = { pos: { ...this.home }, ang: homeAngle(this.box.th), pitch: 0 };
+      this.targets = { pos: { ...this.home }, ang: homeAngle(this.box.th), pitch: 0, roll: 0 };
     } else if (d.mode === "move") {
       this.targets.pos = null;
     } else if (this.view === "flat") {
       this.targets.ang = null;
     } else {
       this.targets.pitch = null;
+      this.targets.roll = null;
     }
     this.canvas.style.cursor = "grab";
     this.disturb();
@@ -650,7 +656,7 @@ export class WaterEngine {
   }
 
   private goHome() {
-    this.targets = { pos: { ...this.home }, ang: homeAngle(this.box.th), pitch: 0 };
+    this.targets = { pos: { ...this.home }, ang: homeAngle(this.box.th), pitch: 0, roll: 0 };
     this.disturb();
   }
 

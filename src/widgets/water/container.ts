@@ -33,6 +33,10 @@ export interface BoxState {
   /** 기울기 각속도 (rad/s), 저역 통과한 각가속 (rad/s²) */
   wp: number;
   alphap: number;
+  /** 좌우 기울기 (rad) — 화면 깊이축((x̂+ẑ)/√2) 둘레. 양수면 물이 화면 왼쪽(−x+z)으로 몰린다 */
+  rl: number;
+  wr: number;
+  alphar: number;
 }
 
 /** 통이 끌려가는 목표. null 이면 그 축은 감쇠만 받고 미끄러지다 멈춘다. */
@@ -41,6 +45,8 @@ export interface BoxTargets {
   ang: number | null;
   /** 기울기 목표 (rad). 없으면(undefined/null) 감쇠만 */
   pitch?: number | null;
+  /** 좌우 기울기 목표 (rad) */
+  roll?: number | null;
 }
 
 /** 기울기 상한 — 이보다 더 기울이면 등각 그림과 물의 방향이 따로 논다 */
@@ -61,7 +67,7 @@ const WALL_BOUNCE = 0.35;
 const SMOOTH = 0.35;
 
 export function newBox(x: number, y: number): BoxState {
-  return { x, y, vx: 0, vy: 0, th: 0, w: 0, ax: 0, ay: 0, alpha: 0, ph: 0, wp: 0, alphap: 0 };
+  return { x, y, vx: 0, vy: 0, th: 0, w: 0, ax: 0, ay: 0, alpha: 0, ph: 0, wp: 0, alphap: 0, rl: 0, wr: 0, alphar: 0 };
 }
 
 /** 지금 각도에서 가장 가까운 "똑바로 선" 각도 — 세 바퀴 돌렸다고 세 바퀴 되감지 않는다. */
@@ -99,22 +105,28 @@ export function grabMode(lx: number, ly: number, boxPx: number, shape: Shape): "
 
 /** 한 스텝 적분 (반암시적 오일러). 가속도는 실제로 바뀐 속도에서 구한다 — 벽에 부딪힌 충격까지 들어간다. */
 export function stepBox(s: BoxState, t: BoxTargets, dt: number, b: Bounds) {
-  const vx0 = s.vx, vy0 = s.vy, w0 = s.w, wp0 = s.wp;
+  const vx0 = s.vx, vy0 = s.vy, w0 = s.w, wp0 = s.wp, wr0 = s.wr;
   const ax = t.pos ? K_POS * (t.pos.x - s.x) - C_POS * s.vx : -COAST * s.vx;
   const ay = t.pos ? K_POS * (t.pos.y - s.y) - C_POS * s.vy : -COAST * s.vy;
   const al = t.ang !== null ? K_ANG * (t.ang - s.th) - C_ANG * s.w : -COAST_ANG * s.w;
   const pitch = t.pitch ?? null;
   const alp = pitch !== null ? K_ANG * (pitch - s.ph) - C_ANG * s.wp : -COAST_ANG * s.wp;
+  const roll = t.roll ?? null;
+  const alr = roll !== null ? K_ANG * (roll - s.rl) - C_ANG * s.wr : -COAST_ANG * s.wr;
   s.vx += ax * dt;
   s.vy += ay * dt;
   s.w += al * dt;
   s.wp += alp * dt;
+  s.wr += alr * dt;
   s.x += s.vx * dt;
   s.y += s.vy * dt;
   s.th += s.w * dt;
   s.ph += s.wp * dt;
+  s.rl += s.wr * dt;
   if (s.ph > MAX_PITCH) { s.ph = MAX_PITCH; if (s.wp > 0) s.wp = 0; }
   if (s.ph < -MAX_PITCH) { s.ph = -MAX_PITCH; if (s.wp < 0) s.wp = 0; }
+  if (s.rl > MAX_PITCH) { s.rl = MAX_PITCH; if (s.wr > 0) s.wr = 0; }
+  if (s.rl < -MAX_PITCH) { s.rl = -MAX_PITCH; if (s.wr < 0) s.wr = 0; }
   // 카드 가장자리에 부딪히면 튕긴다. 이 순간의 큰 가속이 그대로 "쾅" 하는 물보라가 된다.
   if (s.x < b.minX) { s.x = b.minX; if (s.vx < 0) s.vx = -s.vx * WALL_BOUNCE; }
   if (s.x > b.maxX) { s.x = b.maxX; if (s.vx > 0) s.vx = -s.vx * WALL_BOUNCE; }
@@ -124,16 +136,19 @@ export function stepBox(s: BoxState, t: BoxTargets, dt: number, b: Bounds) {
   s.ay += SMOOTH * ((s.vy - vy0) / dt - s.ay);
   s.alpha += SMOOTH * ((s.w - w0) / dt - s.alpha);
   s.alphap += SMOOTH * ((s.wp - wp0) / dt - s.alphap);
+  s.alphar += SMOOTH * ((s.wr - wr0) / dt - s.alphar);
 }
 
 /** 통이 멈췄고 목표에 닿아 있는가 — 잠들기 판정 */
 export function boxSettled(s: BoxState, t: BoxTargets): boolean {
-  const still = Math.hypot(s.vx, s.vy) < 1 && Math.abs(s.w) < 0.01 && Math.abs(s.wp) < 0.01;
+  const still = Math.hypot(s.vx, s.vy) < 1 && Math.abs(s.w) < 0.01 && Math.abs(s.wp) < 0.01 && Math.abs(s.wr) < 0.01;
   const atPos = !t.pos || Math.hypot(t.pos.x - s.x, t.pos.y - s.y) < 0.5;
   const atAng = t.ang === null || Math.abs(t.ang - s.th) < 0.002;
   const pitch = t.pitch ?? null;
   const atPitch = pitch === null || Math.abs(pitch - s.ph) < 0.002;
-  return still && atPos && atAng && atPitch;
+  const roll = t.roll ?? null;
+  const atRoll = roll === null || Math.abs(roll - s.rl) < 0.002;
+  return still && atPos && atAng && atPitch && atRoll;
 }
 
 /** 관성력 상한 — 포인터 한 번 튄 것으로 물이 통을 뚫고 나가지 않게 */
@@ -190,8 +205,10 @@ export function rotateAbout(v: [number, number, number], axis: [number, number, 
   ];
 }
 
-/** 등각 보기에서 화면 오른쪽에 해당하는 통 좌표계 방향 — 기울이기 축이기도 하다 */
+/** 등각 보기에서 화면 오른쪽에 해당하는 통 좌표계 방향 — 앞뒤 기울이기(pitch) 축이기도 하다 */
 export const SCREEN_RIGHT: [number, number, number] = [Math.SQRT1_2, 0, -Math.SQRT1_2];
+/** 화면 안쪽(깊이) 방향 — 좌우 기울이기(roll) 축 */
+export const SCREEN_IN: [number, number, number] = [Math.SQRT1_2, 0, Math.SQRT1_2];
 
 /**
  * 등각 보기에서 물이 느끼는 힘. 화면 좌표의 중력·흔들기 가속을 통 좌표계로 옮긴다:
@@ -212,12 +229,13 @@ export function inertialForces3(
   if (mag > A_MAX) { Ax *= A_MAX / mag; Ay *= A_MAX / mag; }
   const sx = gx - Ax, sy = gy - Ay;
   const [ex, , ez] = SCREEN_RIGHT;
-  const a = rotateAbout([sx * ex, sy, sx * ez], SCREEN_RIGHT, s.ph);
-  const w = clampAbs(s.wp * o.inertia, W_MAX);
-  const al = clampAbs(s.alphap * o.inertia, ALPHA_MAX);
+  const [ix, , iz] = SCREEN_IN;
+  const a = rotateAbout(rotateAbout([sx * ex, sy, sx * ez], SCREEN_RIGHT, s.ph), SCREEN_IN, s.rl);
+  const w = clampAbs(s.wp * o.inertia, W_MAX), wr = clampAbs(s.wr * o.inertia, W_MAX);
+  const al = clampAbs(s.alphap * o.inertia, ALPHA_MAX), alr = clampAbs(s.alphar * o.inertia, ALPHA_MAX);
   return {
     ax: a[0], ay: a[1], az: a[2],
-    wx: w * ex, wy: 0, wz: w * ez,
-    alx: al * ex, aly: 0, alz: al * ez,
+    wx: w * ex + wr * ix, wy: 0, wz: w * ez + wr * iz,
+    alx: al * ex + alr * ix, aly: 0, alz: al * ez + alr * iz,
   };
 }

@@ -255,8 +255,6 @@ function Field({ f, value, onChange }: { f: SettingField; value: unknown; onChan
       return <label className="row"><span>{f.label}</span><input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} /></label>;
     case "number":
       return <label className="row"><span>{f.label}</span><input type="number" value={Number(value)} min={f.min} max={f.max} step={f.step} onChange={(e) => onChange(Number(e.target.value))} /></label>;
-    case "range":
-      return <Slider label={f.label} value={Number(value)} min={f.min} max={f.max} step={f.step} suffix={f.unit} onChange={onChange} />;
     case "text":
       return <label className="row"><span>{f.label}</span><input type="text" value={String(value ?? "")} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} /></label>;
     case "select":

@@ -1,7 +1,10 @@
 import type { Shape, SimParams } from "./sim";
+import type { SimParams3 } from "./sim3";
 
 export type Preset = "water" | "honey" | "jelly" | "zerog" | "moon" | "custom";
 export type Quality = "low" | "medium" | "high";
+/** 보기 — 등각 3D(기본) · 등각이지만 2D 유체를 깊이로 늘인 폴백 · 예전 2D 측면 */
+export type View = "iso" | "isoLite" | "flat";
 
 /** 사용자가 조정하는 물리 법칙 — 설정 패널의 "직접" 항목과 같은 이름·단위다. */
 export interface Physics {
@@ -36,6 +39,9 @@ export interface WaterSettings extends Physics, Record<string, unknown> {
   returnHome: boolean;
   /** 비우면 강조색 */
   color: string;
+  view: View;
+  /** `scene.ts` 의 장면 이름 */
+  scene: string;
 }
 
 export const PRESETS: Record<Exclude<Preset, "custom">, Physics> = {
@@ -100,6 +106,21 @@ export function simParamsOf(p: Physics, quality: Quality = "medium"): SimParams 
   };
 }
 
+const PRESSURE_ITERS3: Record<Quality, number> = { low: 15, medium: 30, high: 60 };
+
+/**
+ * 3D 솔버 계수 — 2D 값 위에 반복 수만 바꾼다. 3D 는 입자가 굵고(수천 개) 스텝이 1/60 이라
+ * 압력 반복을 줄여도 되고, 이웃 탐색이 비싸 분리는 1회가 기본이다 (벤치: 2회면 스텝 2배).
+ */
+export function simParams3Of(p: Physics, quality: Quality = "medium"): SimParams3 {
+  return {
+    ...simParamsOf(p, quality),
+    pressureIters: PRESSURE_ITERS3[quality] ?? PRESSURE_ITERS3.medium,
+    separationIters: quality === "high" ? 2 : 1,
+    densityK: 1,
+  };
+}
+
 /** 통을 건드리지 않고 물이 거의 멈춘(`CALM_GATE` 아래) 채 이만큼 지나면 잔물결을 가라앉히기 시작한다 (s) */
 export const CALM_AFTER = 2;
 /**
@@ -120,7 +141,7 @@ export const CALM_RAMP = 1.5;
  * 루프도 잠들지 못한다. 통을 한동안 건드리지 않았을 때만 걸고, 다시 건드리면 즉시 0 으로 돌린다 —
  * 흔드는 동안의 출렁임은 그대로다.
  */
-export function calmed(p: SimParams, k: number): SimParams {
+export function calmed<P extends SimParams>(p: P, k: number): P {
   if (k <= 0) return p;
   const t = Math.min(1, k);
   const lerp = (a: number, b: number) => a * (1 - t) + b * t;

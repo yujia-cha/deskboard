@@ -1,6 +1,7 @@
 import type { WidgetDefinition } from "../types";
 import { Water, type WaterSettings } from "./Water";
 import { PRESETS } from "./params";
+import { SCENES } from "./scene";
 
 const custom = { showIf: { key: "preset", equals: "custom" } } as const;
 const w = PRESETS.water;
@@ -13,7 +14,15 @@ export const waterWidget: WidgetDefinition<WaterSettings> = {
   defaultSize: { w: 200, h: 200 },
   minSize: { w: 120, h: 120 },
   settingsSchema: [
-    { key: "note", type: "note", label: "통 안쪽을 끌면 흔들고, 가장자리(점선 고리)를 끌면 돌립니다. 휠: 15°씩 회전 · 더블클릭: 원위치." },
+    { key: "note", type: "note", label: "통 안쪽을 끌면 흔들고, 가장자리(점선 고리)를 세로로 끌면 기울입니다(2D 보기에서는 돌립니다). 물체는 집어서 옮길 수 있습니다. 휠: 기울이기 · 더블클릭: 원위치." },
+    { key: "view", label: "보기", type: "select", default: "iso",
+      options: [
+        { value: "iso", label: "등각 3D (복셀)" },
+        { value: "isoLite", label: "등각 (2D 유체를 늘임 — 가벼움)" },
+        { value: "flat", label: "2D 측면" },
+      ] },
+    { key: "scene", label: "장면 (src/widgets/water/scene.ts)", type: "select", default: "default",
+      options: Object.entries(SCENES).map(([value, s]) => ({ value, label: s.label })) },
     { key: "preset", label: "물성", type: "select", default: "water",
       options: [
         { value: "water", label: "물" },
@@ -36,7 +45,7 @@ export const waterWidget: WidgetDefinition<WaterSettings> = {
     // 늘 보이는 것
     { key: "fill", label: "물 양", type: "range", default: 45, min: 10, max: 80, step: 5, unit: "%" },
     { key: "pixelSize", label: "입자 크기", type: "range", default: 2, min: 1, max: 4, step: 1, unit: " px" },
-    { key: "shape", label: "통 모양", type: "select", default: "square",
+    { key: "shape", label: "통 모양 (2D 측면)", type: "select", default: "square", showIf: { key: "view", equals: "flat" },
       options: [{ value: "square", label: "사각" }, { value: "round", label: "원형" }] },
     { key: "quality", label: "품질", type: "select", default: "medium",
       options: [

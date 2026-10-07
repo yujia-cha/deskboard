@@ -470,31 +470,24 @@ export class FlipSim3 {
   }
 
   private updateDensity() {
-    const { n, h, pos, density: d, cellType } = this;
+    const { n, h, pos, density: d } = this;
     d.fill(0);
     const half = h / 2;
+    // 벽 옆 입자의 가중치가 벽 칸으로 새지 않게 표본 위치를 첫 유체 칸 중심 안쪽으로 모은다.
+    // 새게 두면 벽 옆 칸이 늘 성기게 읽혀 밀도 보정이 그곳을 못 보고, 입자가 벽에서 더 빽빽이
+    // 뭉쳐 벽 기둥의 수면이 1~5 복셀 낮아졌다 (실측).
+    const lo = half, hi = (n - 2) * h - half;
     for (let i = 0; i < this.count; i++) {
-      const w = this.weights(pos[3 * i], pos[3 * i + 1], pos[3 * i + 2], half, half, half);
+      const x = Math.max(lo, Math.min(hi, pos[3 * i])), y = Math.max(lo, Math.min(hi, pos[3 * i + 1])), z = Math.max(lo, Math.min(hi, pos[3 * i + 2]));
+      const w = this.weights(x, y, z, half, half, half);
       d[w.n0] += w.d0; d[w.n1] += w.d1; d[w.n2] += w.d2; d[w.n3] += w.d3;
       d[w.n4] += w.d4; d[w.n5] += w.d5; d[w.n6] += w.d6; d[w.n7] += w.d7;
     }
     if (this.restDensity === 0) {
-      // 여섯 이웃이 모두 유체인 속 칸만으로 평균을 낸다 — 표면·벽 인접 칸은 가중치가 밖으로 새어
-      // 늘 낮게 나와, 전체 평균을 쓰면 속이 "뭉친" 것으로 보여 부피가 불어난다.
-      const nn = n * n;
-      let sum = 0, cells = 0;
-      for (let i = 1; i < n - 1; i++) {
-        for (let j = 1; j < n - 1; j++) {
-          for (let k = 1; k < n - 1; k++) {
-            const c = (i * n + j) * n + k;
-            if (cellType[c] !== FLUID) continue;
-            if (cellType[c - nn] === FLUID && cellType[c + nn] === FLUID && cellType[c - n] === FLUID
-              && cellType[c + n] === FLUID && cellType[c - 1] === FLUID && cellType[c + 1] === FLUID) { sum += d[c]; cells++; }
-          }
-        }
-      }
-      // 속 칸이 하나도 없으면(물이 아주 얇음) 해석값: 칸 부피 / 입자 부피 = (h / voxel)³
-      this.restDensity = cells > 0 ? sum / cells : Math.pow(h / this.voxel, 3);
+      // 해석값: 칸 부피 / 입자(복셀) 부피 = (h / voxel)³. 재서 쓰면 안 된다 — 복셀 격자와 압력 격자의
+      // 간격이 어긋나 속 칸 평균이 2~3% 높게 나오고, 그러면 온 물이 "성긴" 것으로 보여 tension 이
+      // 안쪽으로 당기고 벽 옆 칸(당기지 않음)에서 물이 빠져나간다 (실측: 벽 기둥 수면이 1~5 복셀 낮았다).
+      this.restDensity = Math.pow(this.h / this.voxel, 3);
     }
   }
 
@@ -550,8 +543,9 @@ export class FlipSim3 {
         let div = u[c + nn] - u[c] + v[c + n] - v[c] + w[c + 1] - w[c];
         if (rest > 0) {
           const compression = (density[c] - rest) * densityK;
-          if (compression > 0) div -= compression;
-          else if (sum === 6) div -= tension * compression; // 벽에 닿은 칸은 당기지 않는다 (2D 와 같은 이유)
+          // 2D 와 달리 벽에 닿은 칸도 당긴다 — 밀도 표본을 벽 안쪽으로 모아(updateDensity) 그 칸이 성기게
+          // 읽히지 않으므로 2D 의 "벽마다 얇은 막" 문제가 없고, 당기지 않으면 밀기만 남아 벽 기둥이 빈다.
+          div -= compression > 0 ? compression : tension * compression;
         }
         const p = (-div / sum) * over;
         u[c] -= sx0 * p; u[c + nn] += sx1 * p;

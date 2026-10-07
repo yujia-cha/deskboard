@@ -52,7 +52,7 @@ P0 에 에너지 출처 둘(회복·클리커)이 들어가므로 할 일 없이
 ┌───────────────────────────────────────────────┐
 │ 🍀3  ⚡84 (+1 01:23)  ⭐37   [보드|할 일 2|친구|도감] │  머리줄 — "할 일 2" = 오늘 남은 할 일
 ├───────────────────────────────────────────────┤
-│ 🦜 🧽 🧼 ✔ [전달]   🐰 🌿   🐱 🍳          │ 🐹  │  주문 줄          클리커 (넓으면 옆,
+│ 🦜 🧽 🧼 ✔ [전달]   🐰 🌿   🐱 🍳          │ 🐹 ⌨│  주문 줄          클리커 (넓으면 옆,
 ├────────────────────────────────────────────┤ ◔  │                   좁으면 아래 — 명세 K-5)
 │ 📦 📦 📦 📦 📦 📦 📦                       │ 7/20│
 │ 📦 📦 🕸🪴 🕸🔧 📦 📦 📦                     │     │
@@ -77,7 +77,8 @@ P0 에 에너지 출처 둘(회복·클리커)이 들어가므로 할 일 없이
 | 칸 `B-*` · 조작 `M-*` · 생산기 `G-*` · 상자·거미줄 `W-*` · 🎁 `S-*` · 보관함 `V-*` | `board.rs` — 순수 함수, rng 는 인자 |
 | 주문·주민 `O-*` | `orders.rs` |
 | 별·레벨·해금 `L-*` | `progress.rs` |
-| 에너지 `E-*` · 시간 회복 `E-3` · 클리커 `K-*` | `energy.rs` (장부) |
+| 에너지 `E-*` · 시간 회복 `E-3` · 클리커 `K-1`~`K-5` | `energy.rs` (장부) |
+| 키보드 클리커 `K-6`~`K-12` | `keycount.rs` |
 | 할 일 `T-*` | `todos.rs` |
 | 꾸미기 `Z-*` | `content.rs` · `assets.rs` |
 
@@ -157,11 +158,53 @@ if now < anchor:       anchor = now                       // 시계를 되돌린
   `merge_clicker_add(n)` 를 한 번 보낸다 (`invokeInOrder`). Rust 가 `clicker_rem += n` → `clicks_per_energy` 마다 +1⚡,
   나머지는 `game` 에 남긴다 (K-4).
 - 고리의 진행은 프론트가 즉시 그린다 (낙관적). 응답의 `clicker_rem` 으로 다시 맞춘다.
-- 마우스 클릭(`pointerdown`, 주 버튼)만 센다. 클리커 버튼은 `<button>` 이 아니라 `role="button"` 의 div 로 두어
-  스페이스·엔터 자동 반복이 들어오지 않게 한다 (K-2).
+- 클리커 버튼은 마우스 클릭(`pointerdown`, 주 버튼)을 센다. `<button>` 이 아니라 `role="button"` 의 div 로 두어
+  버튼에 포커스가 있을 때 스페이스·엔터가 클릭으로 **두 번** 세지지 않게 한다 (키는 아래 키보드 클리커가 센다).
 - 클리커를 누를 때도 포커스 문제(§4.2)는 같다 — 클릭은 짧아서 끊길 일은 없지만, 보드와 같은 영역(`data-capture-keys`) 안에 둔다.
 
-### 3.5 할 일 탭
+### 3.5 키보드 클리커 — 다른 앱의 키 횟수 세기 (명세 §13.1)
+
+다른 앱이 전경일 때 누른 키까지 세려면 웹뷰의 `keydown` 으로는 안 된다 (포커스가 있을 때만 온다).
+Rust 백엔드가 Windows 에서 직접 받는다. 방법을 비교했다:
+
+| 방법 | 동작 | 판정 |
+|---|---|---|
+| **Raw Input + `RIDEV_INPUTSINK`** | 메시지 전용 창 하나를 만들어 키보드를 등록하면, 전경이 아닐 때도 `WM_INPUT` 이 온다 | **채택** — 입력 경로 밖에서 **받아 보기만** 한다. 다른 앱의 입력을 늦추거나 막을 수 없다 |
+| `SetWindowsHookEx(WH_KEYBOARD_LL)` | 시스템 전체 키 입력이 우리 콜백을 거친다 | 탈락 — 모든 키 입력이 우리 스레드를 거쳐 가서 우리가 바쁘면 **온 시스템의 타자가 늦어진다** (Windows 는 시간을 넘긴 훅을 조용히 떼어 버린다). 생김새도 키로거와 같아 백신 오탐 위험이 크다 |
+| `GetAsyncKeyState` 폴링 | 주기마다 256키 상태를 훑는다 | 탈락 — 짧게 누른 키를 놓치고, 세는 정확도와 CPU 가 맞바꿈이 된다 |
+| `GetLastInputInfo` (activity 위젯이 이미 씀) | 마지막 입력 시각 | 횟수를 알 수 없다 |
+
+구조:
+
+```
+providers/merge/keycount.rs
+  trait KeySource { fn start(&self, on_press: Box<dyn Fn() + Send>) -> Handle; }   // Handle drop = 멈춤
+  RawInputSource (Windows)   — 전용 스레드: RegisterClassW + CreateWindowExW(HWND_MESSAGE)
+                               → RegisterRawInputDevices(page 0x01, usage 0x06, RIDEV_INPUTSINK, hwnd)
+                               → GetMessageW 루프, WM_INPUT 마다 GetRawInputData → RAWKEYBOARD
+  FakeSource (테스트)        — 눌림/뗌 순서를 주입
+```
+
+- **센 것은 숫자 하나뿐**: `RAWKEYBOARD` 의 `VKey`·`Flags(RI_KEY_BREAK)` 는 **눌림 상태 비트 256개**를 갱신하는 데만
+  잠깐 쓰고 버린다. 이미 눌린 키의 눌림(자동 반복)은 세지 않는다 (K-8). 키 이름·순서·시각은 어디에도 남지 않는다 —
+  로그(`log::`)에도 키를 찍지 않는다. 이 불변식을 테스트로 고정한다 (아래 §8).
+- 같은 키를 놓쳤을 때(누른 채 잠금 화면으로 가서 거기서 뗌 등) 비트가 영영 눌림으로 남지 않게, `WM_INPUT_DEVICE_CHANGE`·
+  세션 잠금 해제 때 비트를 비운다.
+- 콜백은 `AtomicU64` 하나를 올리기만 한다. 따로 도는 정산이 **5초마다**(또는 100번마다) 그 값을 꺼내
+  `clicker_rem += n × clicksPerKey` 로 `game` 에 반영하고 `merge://changed` 를 보낸다 — 키마다 SQLite 를 쓰지 않는다.
+  소수 `clicksPerKey` 의 남는 부분도 `clicker_rem` 에 실수로 이월된다.
+- **켜는 조건**(K-9): `game.key_clicker` 가 참이고, 프론트가 알린 "떠 있는 merge 위젯 수" 가 1 이상. 둘 중 하나라도 거짓이면
+  `Handle` 을 버려(`RIDEV_REMOVE` + 창 파괴 + 스레드 종료) 받는 것 자체를 멈춘다.
+  - 위젯 수: 각 인스턴스가 마운트/언마운트 때 `merge_widget_present(instanceId, bool)` 를 `invokeInOrder` 로 보낸다
+    (StrictMode 의 켜기→끄기→켜기 순서 문제 — CLAUDE.md 규칙). 백엔드는 id 집합으로 센다.
+  - ⌨ 토글: `merge_set_key_clicker(on)` — 보드는 하나이므로 인스턴스 설정이 아니라 `game` 에 둔다.
+    앱을 다시 켜도 유지되고, 위젯이 마운트되는 순간 다시 센다.
+- 대시보드 자신의 입력란(할 일 추가 등)에 친 키도 센다 — 구분할 이유가 없다.
+- 비용: 키 하나에 메시지 하나 + 원자적 증가 하나. 유휴 시 스레드는 `GetMessageW` 에서 잠들어 CPU 0. 켬/끔 CPU 를 실측해 PR 에 남긴다.
+- `windows-sys` 에 `Win32_UI_Input` 기능을 더한다 (`RegisterRawInputDevices`·`GetRawInputData`). 새 크레이트는 없다.
+- Windows 가 아닌 빌드에서는 `KeySource` 가 아무것도 하지 않는 구현이다 (CI 의 다른 플랫폼 테스트용).
+
+### 3.6 할 일 탭
 
 ```
 오늘 (10/7)                          +30⚡ 받음
@@ -181,7 +224,7 @@ if now < anchor:       anchor = now                       // 시계를 되돌린
 **기존 메모·할 일 위젯과 합치지 않는다.** 그쪽은 반복(일간·주간)이 없는 목록이고, 에너지와 공유가 얽히면
 메모 위젯의 단순함이 무너진다. 나중에 "메모 위젯의 목록 하나를 에너지 할 일로 연결" 은 가능하다.
 
-### 3.6 도감 탭 (P1.5)
+### 3.7 도감 탭 (P1.5)
 
 ```
 계열              생산기           주민
@@ -214,6 +257,7 @@ src-tauri/src/providers/merge/
 ├─ orders.rs     주문 생성·충족 판정·보상·교체·친밀도
 ├─ progress.rs   별 → 레벨, 해금, 레벨업 보상·받을 선물 줄
 ├─ energy.rs     장부, 시간 회복 정산, 클리커 나머지
+├─ keycount.rs   키보드 클리커 — KeySource 트레이트, Raw Input 구현, Fake
 ├─ todos.rs      기간 키, 완료·해제, 보너스·연속
 ├─ store.rs      MergeStore 트레이트 + SqliteStore (`merge.sqlite`, in_memory 로 테스트)
 ├─ identity.rs   (P2) 키 생성·DPAPI 저장
@@ -228,7 +272,7 @@ src-tauri/src/providers/merge/
 ```sql
 CREATE TABLE game (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER, json TEXT);
   -- 보드 63칸 + 보관함 + 받을 선물 + 주문·주민 친밀도 + 별·레벨 + 에너지 캐시
-  -- + regen_anchor + clicker_rem + 튜토리얼 단계. 작아서 통째로 JSON 한 줄, 조작마다 다시 쓴다.
+  -- + regen_anchor + clicker_rem + key_clicker(켬/끔) + 튜토리얼 단계. 작아서 통째로 JSON 한 줄, 조작마다 다시 쓴다.
 CREATE TABLE ledger (id INTEGER PRIMARY KEY, at INTEGER, delta INTEGER, reason TEXT, ref TEXT, day_key TEXT);
 CREATE UNIQUE INDEX ledger_daily ON ledger(reason, day_key) WHERE reason IN ('spend:spawn','regen','clicker');
 -- 콘텐츠 (명세 §3·§9·§14)
@@ -261,6 +305,7 @@ CREATE TABLE snapshots (author TEXT PRIMARY KEY, seq INTEGER, json TEXT, sig BLO
 | `merge_sell(cell)` · `merge_deliver(slot)` · `merge_reroll(slot)` · `merge_open_box(cell)` | ⚡ 로 값을 치르거나 돌려받는다 |
 | `merge_inv_expand()` · `merge_claim_gift()` · `merge_tutorial(step)` | |
 | `merge_clicker_add(n)` → `{energy, clicker_rem}` | `invokeInOrder` 로 |
+| `merge_set_key_clicker(on)` · `merge_widget_present(instanceId, present)` | 키보드 클리커 켜기/끄기, 위젯이 떠 있는지 — 둘 다 `invokeInOrder` 로 |
 | `merge_content()` | 렌더링용 계열·생산기·주민·스킨 (그림은 data URI 로 풀어서) |
 | (P1.5) `merge_content_upsert(kind, row)` · `merge_content_hide(kind, id, hidden)` · `merge_content_reset(kind?, id?)` | |
 | (P1.5) `merge_asset_import(path)` → `{hash, dataUri}` | |
@@ -435,6 +480,8 @@ A → B: Snapshots [ A@128 ]
 | 콘텐츠 편집 | 사용자가 계열을 지우거나 레벨을 줄이면 보드에 정체 모를 아이템이 남는다 | 지우기 대신 숨기기(Z-4), 레벨 줄이기는 넘치는 아이템이 없을 때만(Z-5). 그래도 모르는 `(id, level)` 을 만나면 판매 환급만큼 ⚡ 로 바꾼다 |
 | 꾸민 이미지 | 큰 파일·이상한 파일 | 128px 로 줄여 저장, 읽기 실패는 사용자 메시지. 원본 크기 상한 20MB |
 | 클리커 자동화 | 오토 클리커로 ⚡ 를 무한히 | 막지 않는다 — 개인용 게임이고 ⭐ 의 뜻은 명세 P-7 에 적었다 |
+| 키보드 클리커 = 전역 입력 받기 | 사용자가 "키로거 아닌가" 걱정할 수 있고, 백신이 의심할 수 있다 | 기본 꺼짐 + 처음 켤 때 안내(K-7) + 켜져 있음 표시. 훅이 아닌 Raw Input(받아 보기만). 키 정체를 남기지 않는 불변식을 테스트로 고정. 서명된 릴리스로 배포(이미 하고 있음) |
+| 관리자 권한 앱 | 그 앱에서 친 키가 안 세질 수 있다 (UIPI) | 실측 후 명세 K-10 에 결과를 적는다 |
 | relay 정책 변경 | 무료 relay 가 바뀔 수 있음 | P2(코드)와 LAN 모드는 영향 없음 |
 | 키 분실 | 재설치 시 새 사람 | 키 내보내기는 남은 일 |
 
@@ -454,12 +501,16 @@ A → B: Snapshots [ A@128 ]
   **아예 안 실리는지**, 꾸민 외형이 안 실리는지, audience 밖으로 중계하지 않는지.
 - **동기화 (`sync/`)**: `FriendTransport` Fake 로 Have/Snapshots 교환과 중계 규칙. iroh 실물 테스트는 한 프로세스에
   엔드포인트 둘을 relay 없이 띄워 왕복 한 번 — 외부 망에 의존하는 테스트는 두지 않는다 (CI 는 windows-latest).
+- **키보드 클리커 (`keycount.rs`)**: `FakeSource` 로 — 누름/뗌 한 번 = 1, 자동 반복(뗌 없는 누름 연속) = 1, 동시에 두 키 = 2,
+  소수 `clicksPerKey` 이월, 토글 끔·위젯 0개면 `Handle` 이 버려지고 더 세지 않음, `merge_widget_present` 순서가 뒤섞여도
+  id 집합이 맞음. **키 정체가 밖으로 나가지 않는다**: 센 결과 타입에 키 정보 필드가 없고(컴파일 단계에서 보장), 정산이 쓰는
+  `game` JSON·장부·이벤트 페이로드에 숫자 말고 아무것도 없는지 확인. Raw Input 실물은 CI 에서 돌리지 않는다 (키 입력을 만들 수 없다).
 - **프론트 (vitest)**: `drag.ts` 좌표→칸 (zoom 0.6~1.4), `regen.ts` 카운트다운, 이모지 한 글자 판정.
 
 ## 9. 구현 순서
 
 1. **P0** — `merge-economy.json`·`merge-content.json`·`merge-board.json` → `board.rs`/`orders.rs`/`progress.rs`/`energy.rs`(+테스트)
-   → `content.rs`(기본값 채우기만) → `store.rs` → 커맨드 → `Board.tsx` 끌어 놓기·`Clicker.tsx` →
+   → `content.rs`(기본값 채우기만) → `store.rs` → 커맨드 → `Board.tsx` 끌어 놓기·`Clicker.tsx` · `keycount.rs`(⌨) →
    `App.tsx` `data-capture-keys` → registry 한 줄. 새 의존성 없음.
 2. **P1** — `todos.rs` · 할 일 탭 · 머리줄 남은 할 일 배지 · 에너지 기록.
 3. **P1.5** — 도감: `assets.rs` · 편집 시트 · 새 계열·주민.
@@ -470,5 +521,6 @@ A → B: Snapshots [ A@128 ]
 
 - 자동 동기화는 iroh (§6). 친구에게는 할 일·점수만, 보기만 한다 (명세 P-6).
 - 재화는 ⚡ 하나. 할 일·에너지 상한 없음. 시간 회복과 클리커가 있다. 방금 만든 할 일도 바로 ⚡ (명세 "결정된 방향").
+- 클리커는 켜면 다른 앱에서 누른 키도 1클릭으로 센다 — Raw Input, 횟수만, 기본 꺼짐 (명세 §13.1, 이 문서 §3.5).
 - 계열·생산기·주민·클리커·상자의 외형은 사용자가 꾸민다 (명세 §14).
 - 나머지 규칙·숫자는 명세의 ✏️ 항목과 §16 조정값 표에서 조금씩 정해 간다.

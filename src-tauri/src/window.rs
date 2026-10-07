@@ -325,11 +325,13 @@ pub fn start_hit_test(app: AppHandle) {
 
                 // 히트 영역 밖(바탕화면·다른 앱) 클릭 알림 — 팝업 닫기용.
                 // 창 blur 는 always-on-bottom 창에서 클릭 직후에도 발생해 쓸 수 없다.
+                //
+                // 위젯 사각형만으로는 부족하다: **다른 앱 창이 위젯을 덮은 자리**를 누르면
+                // 사각형 안이라 알림이 안 나가 팝업이 열린 채 남았다. 커서 밑 창이 정말
+                // 우리인지 함께 본다 (누르는 순간에만 묻는다 — 비용은 클릭당 한 번).
                 let pressed = mouse_pressed();
-                if pressed && !was_pressed {
-                    if want_ignore {
-                        let _ = app.emit("hit://outside-press", ());
-                    }
+                if pressed && !was_pressed && (want_ignore || !cursor_over_us(&app)) {
+                    let _ = app.emit("hit://outside-press", ());
                 }
                 was_pressed = pressed;
             }
@@ -534,31 +536,119 @@ fn needs_fix(z: &ZScan) -> bool {
     z.desktop != 0 && (z.desktop_above || z.others_below > 0)
 }
 
-/// 웹뷰 안에서 **입력 요소**가 포커스를 쥐고 있는가 (프론트엔드가 알려 준다).
+/// 대시보드가 **키보드를 쓰는 중**인가 (프론트엔드가 알려 준다).
+///
+/// 입력 요소에 포커스가 있을 때만이 아니다 — 편집 모드·설정 패널·열린 팝업도 Esc 를 받아야
+/// 하므로 참이다 (`App.tsx` 의 `keyboardWanted`). 이게 참인 동안에는 전경을 돌려주지 않는다.
+///
+/// **훅에서 거짓으로 되돌리지 않는다.** 프론트가 유일한 진실 원천이다 — 편집 모드에서 다른 앱을
+/// 갔다 돌아왔을 때 훅이 지워 버리면, 프론트는 상태가 그대로라 다시 알리지 않고, 편집 중인데도
+/// 전경을 빼앗긴다.
 #[cfg(target_os = "windows")]
-static TEXT_FOCUS: AtomicBool = AtomicBool::new(false);
+static KEYBOARD_WANTED: AtomicBool = AtomicBool::new(false);
 /// 우리가 아니었던 마지막 전경 창 — 포커스를 돌려줄 곳.
 #[cfg(target_os = "windows")]
 static PREV_FOREGROUND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+/// 우리 바로 전의 전경이 **바탕화면**이었다. 그때는 아무 데도 돌려주지 않는다 —
+/// `PREV_FOREGROUND` 는 그보다 더 옛날 창이라, 돌려주면 사용자가 떠나온 앱이 엉뚱하게 튀어나온다.
+#[cfg(target_os = "windows")]
+static PREV_WAS_DESKTOP: AtomicBool = AtomicBool::new(false);
 /// 이 시각이 지나면 포커스를 돌려줄지 판단한다. 0 이면 대기 중인 판단이 없다.
 #[cfg(target_os = "windows")]
 static DECIDE_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// 웹뷰의 포커스가 입력 요소로 옮겨졌는지 프론트엔드가 알려 준다.
+/// 전경을 얻은 뒤 판단까지 기다리는 시간. 창이 먼저 활성화되고 웹뷰의 포커스 이벤트는
+/// 몇 ms 뒤에 온다 — 즉시 판단하면 정당한 입력란 클릭까지 되돌려 버린다.
+#[cfg(target_os = "windows")]
+const FOCUS_SETTLE_MS: u64 = 250;
+/// 버튼이 눌려 있으면(드래그 중) 이만큼 뒤에 다시 본다.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+const FOCUS_RETRY_MS: u64 = 100;
+
+/// 대시보드가 키보드를 쓰는 중인지 프론트엔드가 알려 준다.
 ///
-/// 이게 켜져 있는 동안에는 전경을 돌려주지 않는다 — 사용자가 글자를 치고 있다는 뜻이다.
+/// **참 → 거짓으로 바뀌는 순간에도 판단을 예약한다.** 판단은 원래 전경이 *바뀔 때만* 예약됐는데,
+/// 입력란에서 치다가 같은 창의 시계를 누르면 전경은 이미 우리라 훅이 다시 뜨지 않는다.
+/// 그러면 입력 요소 없이 전경을 계속 쥐어 IME 가 "사용 안 함" 으로 남았다.
 #[tauri::command]
-pub fn ui_set_text_focus(active: bool) {
+pub fn ui_set_keyboard_wanted(app: AppHandle, active: bool) {
     #[cfg(target_os = "windows")]
     {
-        TEXT_FOCUS.store(active, Ordering::Relaxed);
+        let was = KEYBOARD_WANTED.swap(active, Ordering::Relaxed);
         if active {
-            // 입력란을 눌렀다 — 돌려줄 이유가 없어졌다.
+            // 입력란을 눌렀다(또는 편집 모드에 들어갔다) — 돌려줄 이유가 없어졌다.
             DECIDE_AT.store(0, Ordering::Relaxed);
+        } else if was && we_are_foreground(&app) {
+            DECIDE_AT.store(now_ms() + FOCUS_SETTLE_MS, Ordering::Relaxed);
         }
     }
     #[cfg(not(target_os = "windows"))]
-    let _ = active;
+    let _ = (app, active);
+}
+
+// 아래 판정 묶음은 Windows 에서만 쓰지만, 테스트는 어느 플랫폼에서나 돌린다.
+
+/// 포커스를 돌려줄지 정하는 데 필요한 것들 — OS 에서 읽어 온 값을 모아 순수 판정에 넘긴다.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#[derive(Debug, Clone, Copy, Default)]
+struct FocusSnapshot {
+    /// 대시보드가 키보드를 쓰는 중이다 (입력란·편집 모드·설정 패널·팝업)
+    keyboard_wanted: bool,
+    /// 지금 전경이 우리다
+    we_are_foreground: bool,
+    /// 마우스 버튼이 눌려 있다 (드래그 중)
+    button_down: bool,
+    /// 우리 바로 전의 전경이 바탕화면이었다
+    came_from_desktop: bool,
+    /// 돌려줄 후보 창
+    target: Option<FocusTarget>,
+}
+
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#[derive(Debug, Clone, Copy)]
+struct FocusTarget {
+    hwnd: isize,
+    /// 아직 살아 있고 보인다 (`IsWindow` && `IsWindowVisible`)
+    alive: bool,
+    /// 최소화돼 있다 — `IsWindowVisible` 은 최소화된 창에도 참이라 따로 본다
+    minimized: bool,
+    /// DWM cloaked — 다른 가상 데스크톱의 창
+    cloaked: bool,
+}
+
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FocusDecision {
+    /// 아무것도 하지 않는다
+    Keep,
+    /// 이만큼 뒤에 다시 본다
+    RetryIn(u64),
+    /// 이 창에 전경을 돌려준다
+    GiveBack(isize),
+}
+
+/// 전경을 돌려줄지 정한다 — OS 호출이 없는 순수 판정이라 테스트할 수 있다.
+///
+/// 돌려주지 않는 경우가 돌려주는 경우보다 많다. **잘못 돌려주는 쪽이 더 나쁘기 때문이다** —
+/// 가만히 두면 IME 표시가 잠깐 어긋날 뿐이지만, 엉뚱한 창을 깨우면 사용자가 보던 화면이 바뀐다.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn focus_decision(s: &FocusSnapshot) -> FocusDecision {
+    if s.keyboard_wanted || !s.we_are_foreground {
+        return FocusDecision::Keep; // 쓰는 중이거나, 이미 다른 창으로 옮겨 갔다.
+    }
+    // 드래그 도중에 전경을 넘기면 활성화가 바뀌며 마우스 캡처가 끊길 수 있다. 놓을 때까지 미룬다.
+    if s.button_down {
+        return FocusDecision::RetryIn(FOCUS_RETRY_MS);
+    }
+    // 바탕화면에 있던 사용자에게는 칠 대상 앱이 없다 — 옛 앱을 깨우지 않는다.
+    if s.came_from_desktop {
+        return FocusDecision::Keep;
+    }
+    match s.target {
+        // 최소화된 창을 깨우면 Win+D 로 치워 둔 앱이 튀어나오고, cloaked 창이면 가상 데스크톱이 넘어간다.
+        Some(t) if t.alive && !t.minimized && !t.cloaked => FocusDecision::GiveBack(t.hwnd),
+        _ => FocusDecision::Keep,
+    }
 }
 
 /// 시계·게이지처럼 **칠 것이 없는** 위젯을 눌러 얻은 전경이면 원래 창에 돌려준다.
@@ -575,7 +665,7 @@ pub fn ui_set_text_focus(active: bool) {
 #[cfg(target_os = "windows")]
 fn give_focus_back_if_idle(app: &AppHandle) {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, IsWindow, IsWindowVisible, SetForegroundWindow,
+        IsIconic, IsWindow, IsWindowVisible, SetForegroundWindow,
     };
     let due = DECIDE_AT.load(Ordering::Relaxed);
     if due == 0 || now_ms() < due {
@@ -583,31 +673,91 @@ fn give_focus_back_if_idle(app: &AppHandle) {
     }
     DECIDE_AT.store(0, Ordering::Relaxed);
 
-    if TEXT_FOCUS.load(Ordering::Relaxed) {
-        return; // 사용자가 치고 있다.
-    }
-    let Some(me) = main_hwnd(app) else { return };
-    // SAFETY: 인자 없는 조회.
-    let fg = unsafe { GetForegroundWindow() };
-    if fg.is_null() || fg as isize != me {
-        return; // 이미 다른 창으로 옮겨 갔다.
-    }
     let prev = PREV_FOREGROUND.load(Ordering::Relaxed);
-    if prev == 0 {
-        return;
-    }
-    // SAFETY: prev 는 훅에서 본 핸들이다. 그 사이 닫혔을 수 있어 살아 있는지 본다.
-    unsafe {
-        if IsWindow(prev as _) == 0 || IsWindowVisible(prev as _) == 0 {
-            return;
+    // SAFETY: prev 는 훅에서 본 핸들이다. 그 사이 닫혔을 수 있어 살아 있는지부터 본다.
+    let target = (prev != 0).then(|| unsafe {
+        let alive = IsWindow(prev as _) != 0 && IsWindowVisible(prev as _) != 0;
+        FocusTarget {
+            hwnd: prev,
+            alive,
+            minimized: alive && IsIconic(prev as _) != 0,
+            cloaked: alive && cloaked(prev) != 0,
         }
-        // 지금 전경을 쥔 쪽이 우리이므로 이 호출은 허용된다.
-        SetForegroundWindow(prev as _);
+    });
+    let snapshot = FocusSnapshot {
+        keyboard_wanted: KEYBOARD_WANTED.load(Ordering::Relaxed),
+        we_are_foreground: we_are_foreground(app),
+        button_down: mouse_held(),
+        came_from_desktop: PREV_WAS_DESKTOP.load(Ordering::Relaxed),
+        target,
+    };
+    match focus_decision(&snapshot) {
+        FocusDecision::Keep => {}
+        FocusDecision::RetryIn(ms) => DECIDE_AT.store(now_ms() + ms, Ordering::Relaxed),
+        // SAFETY: 살아 있는 것을 방금 확인한 핸들이다. 지금 전경을 쥔 쪽이 우리이므로 이 호출은 허용된다.
+        FocusDecision::GiveBack(h) => unsafe {
+            SetForegroundWindow(h as _);
+        },
     }
 }
 
 #[cfg(not(target_os = "windows"))]
 fn give_focus_back_if_idle(_app: &AppHandle) {}
+
+/// 지금 전경 창이 우리 메인 창인가.
+#[cfg(target_os = "windows")]
+fn we_are_foreground(app: &AppHandle) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    let Some(me) = main_hwnd(app) else { return false };
+    // SAFETY: 인자 없는 조회.
+    let fg = unsafe { GetForegroundWindow() };
+    !fg.is_null() && fg as isize == me
+}
+
+/// 마우스 왼쪽/오른쪽 버튼이 **지금** 눌려 있는가.
+///
+/// `mouse_pressed` 와 달리 "직전 이후 눌린 적 있음"(`0x0001`) 비트는 보지 않는다 — 그 비트는
+/// 읽으면 지워지므로, 같은 루프의 바깥 클릭 판정과 나눠 읽으면 서로 값을 빼앗는다.
+#[cfg(target_os = "windows")]
+fn mouse_held() -> bool {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
+    // SAFETY: GetAsyncKeyState 는 인자 외 상태를 요구하지 않는다.
+    let down = |vk: u16| unsafe { GetAsyncKeyState(vk as i32) } as u16 & 0x8000 != 0;
+    down(VK_LBUTTON) || down(VK_RBUTTON)
+}
+
+/// 이 창이 우리 프로세스의 것인가 (트레이 메뉴용 숨은 창, 파일 선택 대화상자 등).
+#[cfg(target_os = "windows")]
+fn is_our_process(h: windows_sys::Win32::Foundation::HWND) -> bool {
+    use windows_sys::Win32::System::Threading::GetCurrentProcessId;
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+    let mut pid: u32 = 0;
+    // SAFETY: pid 는 유효한 출력 포인터다.
+    unsafe { GetWindowThreadProcessId(h, &mut pid) };
+    // SAFETY: 인자 없는 조회.
+    pid != 0 && pid == unsafe { GetCurrentProcessId() }
+}
+
+/// 커서 바로 밑의 창이 우리 창(또는 그 자식)인가 — 바깥 클릭 판정에 쓴다.
+///
+/// 위젯 사각형만 보면 **다른 앱 창이 위젯을 덮고 있는 자리**도 안쪽으로 친다.
+/// 그 앱을 눌러도 팝업이 닫히지 않던 이유다. 모르겠으면 "우리 위" 로 친다 —
+/// 팝업이 엉뚱하게 닫히는 것보다 안 닫히는 편이 덜 나쁘다.
+#[cfg(target_os = "windows")]
+fn cursor_over_us(app: &AppHandle) -> bool {
+    use windows_sys::Win32::Foundation::POINT;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetAncestor, WindowFromPoint, GA_ROOT};
+    let (Some(me), Some((x, y))) = (main_hwnd(app), cursor_pos()) else { return true };
+    // SAFETY: 값으로 넘기는 좌표와, 그 결과 핸들에 대한 조회다.
+    unsafe {
+        let h = WindowFromPoint(POINT { x, y });
+        !h.is_null() && GetAncestor(h, GA_ROOT) as isize == me
+    }
+}
+#[cfg(not(target_os = "windows"))]
+fn cursor_over_us(_app: &AppHandle) -> bool {
+    true
+}
 
 /// 우리 **바로 아래**에 있는 의미 있는 창 — z-order 불변식을 싸게 확인하는 수단.
 ///
@@ -871,21 +1021,33 @@ unsafe extern "system" fn on_shell_event(
     if me != 0 && hwnd as isize == me {
         // 우리가 전경이 됐다. 입력란을 눌러서인지 아닌지는 아직 모른다 — 웹뷰의 포커스
         // 이벤트가 몇 ms 뒤에 오기 때문이다. 잠깐 뒤에 다시 보기로 표시만 해 둔다.
-        TEXT_FOCUS.store(false, Ordering::Relaxed);
-        DECIDE_AT.store(now_ms() + 250, Ordering::Relaxed);
+        // (`KEYBOARD_WANTED` 는 건드리지 않는다 — 프론트가 진실 원천이다.)
+        DECIDE_AT.store(now_ms() + FOCUS_SETTLE_MS, Ordering::Relaxed);
         return;
     }
-    // 우리가 아닌 창이 전경이 됐다 — 나중에 포커스를 돌려줄 곳으로 기억한다.
-    // 바탕화면은 제외한다: 거기로 돌려주면 IME 가 다시 갈 곳을 잃는다.
-    if !hwnd.is_null() && !class_is_top(hwnd, &["Progman", "WorkerW", "Shell_TrayWnd"]) {
-        PREV_FOREGROUND.store(hwnd as isize, Ordering::Relaxed);
+    if hwnd.is_null() {
+        return;
     }
-    // 바탕화면이 전경이 됐다. **셸은 전경을 먼저 바꾸고 그 다음에 Progman 을 올린다**
-    // (실측: 이 시점에 `desktop_above` 는 아직 false 였다). 그래서 여기서 고치지 않고
-    // 버스트만 켠다 — 실제 교정은 뒤따라 오는 변화를 보고 루프가 한다.
+    // 바탕화면이 전경이 됐다. 돌려줄 곳으로 삼지는 않는다(거기로 돌려주면 IME 가 다시 갈 곳을
+    // 잃는다). 대신 "바탕화면에서 왔다" 를 기억해, 그 사이 위젯을 누르면 아무 데도 돌려주지 않는다.
+    //
+    // **셸은 전경을 먼저 바꾸고 그 다음에 Progman 을 올린다** (실측: 이 시점에
+    // `desktop_above` 는 아직 false 였다). 그래서 여기서 고치지 않고 버스트만 켠다 —
+    // 실제 교정은 뒤따라 오는 변화를 보고 루프가 한다.
     if class_is_top(hwnd, &["Progman", "WorkerW"]) {
+        PREV_WAS_DESKTOP.store(true, Ordering::Relaxed);
         arm_burst();
+        return;
     }
+    // 작업표시줄과 우리 프로세스의 다른 창(트레이 메뉴용 숨은 창·파일 선택 대화상자)은
+    // 돌려줄 곳이 아니다 — 숨은 창이 기억되면 반환이 조용히 취소되어 IME 가 그대로 남았다.
+    // 기억을 덮어쓰지도 않는다: 그 전의 앱이 여전히 맞는 대상이다.
+    if class_is_top(hwnd, &["Shell_TrayWnd"]) || is_our_process(hwnd) {
+        return;
+    }
+    // 우리가 아닌 앱 창이 전경이 됐다 — 나중에 포커스를 돌려줄 곳으로 기억한다.
+    PREV_FOREGROUND.store(hwnd as isize, Ordering::Relaxed);
+    PREV_WAS_DESKTOP.store(false, Ordering::Relaxed);
 }
 
 /// 시작 시 한 번. 메시지 루프가 있는 스레드에서 불러야 한다 (`lib.rs` 의 setup).
@@ -982,6 +1144,78 @@ mod tests {
         let rects = [rect(0.0, 0.0, 10.0, 10.0), rect(100.0, 100.0, 10.0, 10.0)];
         assert!(!cursor_outside_all(&rects, (105, 105), (0, 0), 1.0));
         assert!(cursor_outside_all(&rects, (50, 50), (0, 0), 1.0));
+    }
+
+    // --- 포커스 반환 판정 ---
+
+    const APP: isize = 0x20a0c;
+
+    fn app_window() -> FocusTarget {
+        FocusTarget { hwnd: APP, alive: true, minimized: false, cloaked: false }
+    }
+
+    /// 시계를 눌러 막 전경을 얻은 평범한 상황 — 돌려줘야 하는 기본 경우.
+    fn clicked_a_clock() -> FocusSnapshot {
+        FocusSnapshot { we_are_foreground: true, target: Some(app_window()), ..Default::default() }
+    }
+
+    #[test]
+    fn clicking_a_widget_with_nothing_to_type_gives_focus_back() {
+        assert_eq!(focus_decision(&clicked_a_clock()), FocusDecision::GiveBack(APP));
+    }
+
+    #[test]
+    fn while_the_dashboard_wants_the_keyboard_focus_stays() {
+        // 입력란·편집 모드(Esc)·설정 패널·열린 팝업 — 전부 프론트가 하나로 접어 알린다.
+        let s = FocusSnapshot { keyboard_wanted: true, ..clicked_a_clock() };
+        assert_eq!(focus_decision(&s), FocusDecision::Keep);
+    }
+
+    #[test]
+    fn once_another_window_is_foreground_there_is_nothing_to_give_back() {
+        let s = FocusSnapshot { we_are_foreground: false, ..clicked_a_clock() };
+        assert_eq!(focus_decision(&s), FocusDecision::Keep);
+    }
+
+    #[test]
+    fn a_drag_in_progress_postpones_the_decision() {
+        // 드래그 도중 활성화가 바뀌면 마우스 캡처가 끊길 수 있다. 놓을 때까지 미룬다.
+        let s = FocusSnapshot { button_down: true, ..clicked_a_clock() };
+        assert_eq!(focus_decision(&s), FocusDecision::RetryIn(FOCUS_RETRY_MS));
+    }
+
+    #[test]
+    fn a_user_who_came_from_the_desktop_is_not_handed_an_old_app() {
+        let s = FocusSnapshot { came_from_desktop: true, ..clicked_a_clock() };
+        assert_eq!(focus_decision(&s), FocusDecision::Keep);
+    }
+
+    #[test]
+    fn a_minimized_window_is_never_woken_up() {
+        // `IsWindowVisible` 은 최소화된 창에도 참이다 — Win+D 로 치운 앱이 튀어나오면 안 된다.
+        let target = FocusTarget { minimized: true, ..app_window() };
+        let s = FocusSnapshot { target: Some(target), ..clicked_a_clock() };
+        assert_eq!(focus_decision(&s), FocusDecision::Keep);
+    }
+
+    #[test]
+    fn a_window_on_another_virtual_desktop_is_never_activated() {
+        let target = FocusTarget { cloaked: true, ..app_window() };
+        let s = FocusSnapshot { target: Some(target), ..clicked_a_clock() };
+        assert_eq!(focus_decision(&s), FocusDecision::Keep);
+    }
+
+    #[test]
+    fn a_closed_or_missing_window_is_skipped() {
+        let gone = FocusTarget { alive: false, ..app_window() };
+        assert_eq!(
+            focus_decision(&FocusSnapshot { target: Some(gone), ..clicked_a_clock() }),
+            FocusDecision::Keep
+        );
+        assert_eq!(
+            focus_decision(&FocusSnapshot { target: None, ..clicked_a_clock() }),
+            FocusDecision::Keep
+        );
     }
 
     // --- z-order 불변식 판정 ---

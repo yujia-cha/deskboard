@@ -76,6 +76,26 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     g.drawImage(c, 0, 0, o.width, o.height);
     return o.toDataURL("image/jpeg", quality);
   },
+  /** 등각 버퍼를 글자로 — 자동화에서 그림 대신 본다. '#' 바디, '=' 윗면, ':' 오른면, '.' 왼면 */
+  ascii: (step = 2) => {
+    const e = (window as unknown as { __waterEngine?: { isoBuf: { w: number; h: number; rgba: Uint8ClampedArray; pick: Uint8Array } | null } }).__waterEngine;
+    const buf = e?.isoBuf;
+    if (!buf) return "";
+    const rows: string[] = [];
+    for (let y = 0; y < buf.h; y += step) {
+      let r = "";
+      for (let x = 0; x < buf.w; x += step) {
+        const i = y * buf.w + x;
+        const m = buf.pick[i];
+        if (m === 0) { r += " "; continue; }
+        if (m >= 2) { r += "#"; continue; }
+        const l = buf.rgba[i * 4] + buf.rgba[i * 4 + 1] + buf.rgba[i * 4 + 2];
+        r += l > 560 ? "=" : l > 430 ? ":" : ".";
+      }
+      rows.push(r.replace(/\s+$/, ""));
+    }
+    return rows.join("\n");
+  },
   /** 엔진 상태 요약 + 수면 높이 통계 */
   stats: () => {
     const e = (window as unknown as { __waterEngine?: { debugState(): Record<string, unknown> } }).__waterEngine;

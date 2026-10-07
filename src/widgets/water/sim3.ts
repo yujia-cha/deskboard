@@ -54,6 +54,8 @@ export interface Sim3Options {
   hashCell?: number;
   /** 스텝 (s) */
   dt?: number;
+  /** 벽 칸 판정 편향 (h 의 배수) — 칸 중심의 sdf > −wallBias·h 면 벽. 기본 0 (실측: 그릇·구에서 키워도 득이 없다) */
+  wallBias?: number;
 }
 
 const FLUID = 0;
@@ -92,6 +94,7 @@ export class FlipSim3 {
   readonly m: number;
   readonly dt: number;
   readonly sdf: Sdf;
+  private wallBias: number;
   /** 시각 (s) — 법칙 훅에 넘긴다 */
   t = 0;
   /** 법칙 훅 */
@@ -161,6 +164,7 @@ export class FlipSim3 {
     this.r = this.voxel / 2;
     this.dt = opts.dt ?? DT3;
     this.sdf = opts.sdf ?? boxSdf;
+    this.wallBias = opts.wallBias ?? 0;
     const cells = this.n * this.n * this.n;
     this.u = new Float32Array(cells);
     this.v = new Float32Array(cells);
@@ -216,7 +220,7 @@ export class FlipSim3 {
         for (let k = 0; k < n; k++) {
           const border = i === 0 || j === 0 || k === 0 || i === n - 1 || j === n - 1 || k === n - 1;
           // 칸 중심이 벽면 밖(sdf > 0)이면 벽. 사각 통은 테두리 칸만 벽이 된다.
-          const outside = !border && sdf((i - 0.5) * h, (j - 0.5) * h, (k - 0.5) * h) > 0;
+          const outside = !border && sdf((i - 0.5) * h, (j - 0.5) * h, (k - 0.5) * h) > -this.wallBias * h;
           sStatic[(i * n + j) * n + k] = border || outside ? 0 : 1;
         }
       }
@@ -267,7 +271,7 @@ export class FlipSim3 {
     this.lastDt = dt;
     this.integrate(dt, f, p.drag); lap(0);
     this.separate(p.separationIters, p.cohesion); lap(1);
-    this.collide(p.friction, p.restitution); lap(2);
+    this.collide(p.friction, p.restitution, f, dt); lap(2);
     this.toGrid(); lap(3);
     this.updateDensity(); lap(4);
     this.prevU.set(this.u); this.prevV.set(this.v); this.prevW.set(this.w);
@@ -369,13 +373,17 @@ export class FlipSim3 {
     }
   }
 
-  private collide(friction: number, restitution: number) {
+  private collide(friction: number, restitution: number, f: Forces3, dt: number) {
     const { pos, vel, r, sdf } = this;
     const lo = r, hi = BOX - r;
     const c = BOX / 2;
     const keep = 1 - friction;
     const isBox = sdf === boxSdf;
     const out = this.fieldOut;
+    // 이번 스텝에 균일 가속이 입자를 미리 옮긴 거리 (integrate 는 위치를 압력 풀기 전에 옮긴다)와 그 방향
+    const gx = f.ax * dt * dt, gy = f.ay * dt * dt, gz = f.az * dt * dt;
+    const gmag = Math.hypot(f.ax, f.ay, f.az);
+    const ux = gmag > 0 ? f.ax / gmag : 0, uy = gmag > 0 ? f.ay / gmag : 0, uz = gmag > 0 ? f.az / gmag : 0;
     for (let i = 0; i < this.count; i++) {
       const o = 3 * i;
       let x = pos[o], y = pos[o + 1], z = pos[o + 2];
@@ -383,18 +391,31 @@ export class FlipSim3 {
       if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) { x = c; y = c; z = c; }
       if (!Number.isFinite(vx) || !Number.isFinite(vy) || !Number.isFinite(vz)) { vx = 0; vy = 0; vz = 0; }
       const d = isBox ? -1 : sdf(x, y, z);
-      if (d > -r) {
-        // 벽면 안쪽 r 까지 법선 방향으로 밀어 넣고, 벽으로 향하는 속도 성분을 반사·마찰한다.
+      if (d > -r * 1.2) {
         projectOut(sdf, x, y, z, r * 0.5, out);
         const nx = out[0], ny = out[1], nz = out[2];
-        const push = d + r;
-        x -= nx * push; y -= ny * push; z -= nz * push;
         const vn = vx * nx + vy * ny + vz * nz;
-        if (vn > 0) {
-          const tx = vx - vn * nx, ty = vy - vn * ny, tz = vz - vn * nz;
-          vx = tx * keep - restitution * vn * nx;
-          vy = ty * keep - restitution * vn * ny;
-          vz = tz * keep - restitution * vn * nz;
+        if (d > -r) {
+          // 벽면 안쪽 r 까지 법선 방향으로 밀어 넣고, 벽으로 향하는 속도 성분을 반사·마찰한다.
+          const push = d + r;
+          x -= nx * push; y -= ny * push; z -= nz * push;
+          if (vn > 0) {
+            const tx = vx - vn * nx, ty = vy - vn * ny, tz = vz - vn * nz;
+            vx = tx * keep - restitution * vn * nx;
+            vy = ty * keep - restitution * vn * ny;
+            vz = tz * keep - restitution * vn * nz;
+          }
+        }
+        // 경사진 벽에 닿은 입자는 이번 스텝의 중력 이동 중 **접선 성분**을 되돌린다. 위치는 압력을 풀기 전에
+        // g·dt² 만큼 옮겨지고 투영은 법선 방향만 되미니, 그대로 두면 스텝마다 g·dt²·sinθ 씩 벽을 따라 기어
+        // 내려가 바닥에 쌓이고 압력이 되밀어 올리는 컨베이어가 돈다 (실측: 그릇·구 0.05 m/s 로 영영 안 잠듦,
+        // 바닥이 평평한 상자·원기둥은 0.007). 흐름 자체는 격자 속도가 옮기므로 죽지 않는다.
+        // 바닥처럼 중력을 받치는 면(n·ĝ > 0)에서만, 받치는 만큼. 수직 벽(n·ĝ = 0)에서는 벽을 따라 떨어지는 게 맞다 —
+        // 거기서도 되돌리면 벽 옆 층만 덜 가라앉아 원기둥 잡음이 0.007 → 0.02 로 늘었다.
+        const support = nx * ux + ny * uy + nz * uz;
+        if (support > 0) {
+          const gn = gx * nx + gy * ny + gz * nz;
+          x -= (gx - gn * nx) * support; y -= (gy - gn * ny) * support; z -= (gz - gn * nz) * support;
         }
       }
       // 사각 경계는 어떤 모양에서도 안전망으로 건다.

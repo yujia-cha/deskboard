@@ -80,15 +80,16 @@ describe("FlipSim3", () => {
     expect(outside).toBe(0);
   });
 
-  it.each<ShapeName>(["box", "cylinder"])("가만히 두면 가라앉아 잠들 수 있을 만큼 멈춘다 (%s)", (shape) => {
-    const sim = new FlipSim3({ res: 14, fill: 0.5, sdf: sdfOf(shape) });
+  it.each<ShapeName>(["box", "cylinder", "bowl", "sphere"])("가만히 두면 가라앉아 잠들 수 있을 만큼 멈춘다 (%s)", (shape) => {
+    const sim = new FlipSim3({ res: 16, fill: 0.5, sdf: sdfOf(shape) });
     run(sim, 1, (t) => ({ ...still(), ax: t < 0.5 ? 20 : 0 }));
     let sum = 0, cnt = 0;
     for (let k = 0; k < 5 / sim.dt; k++) {
       sim.step(still(), calmed(water, (k * sim.dt) / 1.5));
       if (k * sim.dt >= 4) { sum += sim.motion(); cnt++; }
     }
-    expect(sum / cnt).toBeLessThan(0.03); // engine.ts 의 SLEEP_MOTION
+    // engine.ts 의 SLEEP_MOTION3 (0.04). 경사진 바닥(그릇·구)은 평평한 바닥보다 잡음이 크다 (실측 0.028 vs 0.007)
+    expect(sum / cnt).toBeLessThan(0.04);
   });
 
   it("고인 물의 수면은 평평하고 좌우·앞뒤 대칭이다", () => {

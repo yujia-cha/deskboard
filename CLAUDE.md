@@ -18,6 +18,7 @@ Windows 바탕화면에 상주하는 개인 위젯 대시보드 (Tauri 2 + React
 | `playtime` | `providers/activity` | `playtime` 은 게임(분류 규칙)을 자동으로 세고, 그 밖의 프로그램은 설정의 `extra` 에 등록한 것만 더해 도넛으로 보여준다 — "게임만"과 "앱 전부"로 위젯을 나누면 같은 데이터를 두 번 보게 된다. 앞에 떠 있는 창의 실행 파일 이름만 **2초마다** 확인해 `activity.sqlite` 에 누적 — **창 제목은 저장하지 않는다.** 확인은 자주, 기록은 드물게(30초마다 한 번 flush) — 비싼 것은 Win32 호출이 아니라 SQL 이다. 더하는 값은 **실제로 흐른 시간**(`MAX_TICK` 으로 자름)이고, 전경이 대시보드 자신이거나 읽지 못한 경우(`Foreground::Ours`/`Unknown`)에는 **아무것도 하지 않는다** — 위젯을 클릭했다고 세던 구간을 끊으면 하루가 토막 난다. 입력이 3분 없으면 자리비움으로 보고 세지 않고, 대시보드 자신도 세지 않는다. 분류는 `resources/activity-rules.json` + 사용자 규칙(`rules` 테이블이 우선). **목록에 없는 게임은 기록은 되지만 위젯에서 걸러진다** — 그래서 두 길을 더 뒀다: ① 게임 설치 폴더(`steamapps\common`·`Epic Games`·`Riot Games`·`XboxGames` 등, `rules::looks_like_game_path`)에서 실행된 exe 는 처음 볼 때 `rules` 에 `game` 으로 넣는다(`set_rule_if_absent` — seed 와 사용자 선택이 우선, **경로는 판단에만 쓰고 저장하지 않는다**), ② "셀 프로그램 고르기"의 🎮 버튼(`activity_set_category`). `extra` 는 사람 이름("VS Code")도 받는다(`parseExtras` 가 exe 이름으로 바꾼다) |
 | `github` | `providers/github` | 기여도 잔디(1년)·리뷰 요청·담당 이슈·미확인 알림, 그리고 등록한 저장소(8개)마다 열린 PR/이슈·내 차례인 것·그 저장소 알림·기본 브랜치 CI. **주기마다 호출은 두 번뿐** — GraphQL 하나(`parse::build_query`, 저장소는 `r0:` `r1:` 별칭으로 나란히)와 REST `/notifications` 하나(GraphQL 에 알림 API 가 없다). 저장소를 늘려도 호출 수는 그대로다. classic PAT 에 `repo`·`notifications`·**`read:user`**(잔디) 필요. PAT 는 **DPAPI 로 암호화**해 `github.dat` 에 (`providers/secrets`) |
 | `folder` | `providers/folders` | 디스코드식 바로가기 폴더. 인스턴스당 실제 디렉터리 1개. **`settings.source` 가 두 가지를 가른다** — `managed`(전용 폴더를 `%APPDATA%/com.user.deskboard/folders/<instanceId>` 에 만들어 쓴다. `dir` 은 쓰지 않고 저장도 하지 않는다)와 `link`(사용자가 고른 기존 폴더. **없으면 만들지 않고** 위젯이 이유를 보여준다). 드롭 시 이동/복사, `IShellItemImageFactory` 로 아이콘 추출, `notify` 로 변경 감지 |
+| `water` | 없음 | 통에 담긴 픽셀 물. 순수 프론트 — **PIC/FLIP 유체**(`sim.ts`, Müller 의 2D FLIP 구조)를 **통 좌표계**에서 푼다: 통의 이동·회전은 관성력(중력−병진 가속, 원심·오일러·코리올리)으로 들어간다(`container.ts::inertialForces`). 통은 포인터를 스프링으로 따라가 그 가속을 그대로 물에 넘긴다(포인터를 직접 미분하면 잡음으로 폭주). 안쪽 드래그=흔들기, 가장자리=회전, 휠 15°, 더블클릭 원위치. 물리 값은 프리셋(물·꿀·젤리·무중력·달) 또는 "직접 조정"(`params.ts`). **멈춘 물은 비용 0** — 실제 변위(`motion`, 저장된 속도 아님: 고인 물도 g·dt 를 들고 있다)가 1초 작으면 rAF 를 멈춘다. FLIP 은 고인 물에도 잔물결이 남으므로 통을 안 건드리고 물이 거의 멈춘(`CALM_GATE`) 지 2초면 PIC 쪽으로 가라앉힌다(`calmed` — 무조건 걸면 약한 중력의 물이 흐르다 벽에 굳는다). 12초 안전망. 밀도 보정은 **양방향**(`tension`, 벽에 닿은 칸 제외) — 밀어내기만 하면 세게 흔든 물이 흩어진 채 부피가 불어난다 |
 
 새 위젯: [docs/ADDING_A_WIDGET.md](docs/ADDING_A_WIDGET.md) — 폴더 하나 + `registry.ts` 한 줄 (+ Provider).
 
@@ -109,7 +110,10 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
   - 같은 자리를 노리는 다른 바탕화면 위젯 앱(Rainmeter 등)과 무한히 싸우지 않도록, 고쳐도
     소용없는 일이 두 번 연속이면 버스트를 켜지 않는다 (`INEFFECTIVE`).
   - **전경이 우리일 때는 내리지 않는다** — 위젯 클릭으로 얻은 포커스와 싸우지 않기 위해서다.
-    그동안 잠깐 앱 위로 올라올 수 있다(허용). 아예 못 올라오게 하는 건 남은 일.
+    애초에 올라오지도 않는다: 클릭 활성화가 창을 z 맨 위로 올리는 일은 우리 창의
+    `WM_WINDOWPOSCHANGING` 으로 오므로, 거기서 `SWP_NOZORDER` 를 붙인다 (`window.rs::hold_z_proc`,
+    `SetWindowSubclass`). **활성화·포커스·IME 는 그대로이고 올라가는 것만 빠진다.** 잠금 상태
+    (히트 영역 켜짐)에서만 막고, 우리 자신의 교정(`enforce_z_order`)은 `OWN_Z_MOVE` 로 통과시킨다.
   탈락한 시도들은 `window.rs` 의 "Win+D 에서 살아남기" 머리말에 실측과 함께 남겨 두었다 —
   `WS_MINIMIZEBOX` 제거(이미 적용돼 있어 무의미) · topmost(이 창에서 `WS_EX_TOPMOST` 가 안 켜짐) ·
   `SetParent`(자식 창은 DWM 알파 합성을 못 받아 아이콘이 사라짐) ·
@@ -124,17 +128,29 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
   대시보드가 전경이 되면 Windows 는 IME 를 이쪽으로 옮기는데, 입력 요소가 없으면 Chromium 이
   "여기엔 입력이 없다" 고 알려 표시기가 **"IME 를 사용하지 않습니다"** 가 된다. 그대로 남으면
   한/영 키가 갈 곳을 잃는다 — 시계를 한 번 눌렀을 뿐인데 다른 앱에서 한글이 안 쳐진다.
-  - 프론트엔드(`App.tsx`)가 `focusin`/`focusout` 으로 **입력 요소가 포커스를 쥐었는지**
-    `ui_set_text_focus` 로 알려 준다. 그게 참이면 포커스를 그대로 둔다.
+  - 프론트엔드(`App.tsx`)가 **대시보드가 키보드를 쓰는 중인지**(`core/focus.ts::keyboardWanted`)
+    `ui_set_keyboard_wanted` 로 알려 준다. 그게 참이면 포커스를 그대로 둔다. 입력 요소 포커스만이
+    아니다 — **편집 모드·설정 패널·열린 팝업**(`useDismiss` 가 저절로 센다)도 Esc 를 받아야 하므로
+    참이다. 입력 요소만 보면 Esc(선택 해제 → 잠금, 팝업 닫기)가 0.25초 뒤 다른 앱으로 갔다.
+    이 값은 **프론트가 유일한 진실 원천**이다 — 훅이 지우면 편집 중에 다른 앱을 다녀왔을 때 프론트는
+    상태가 그대로라 다시 알리지 않는다.
+  - 판단은 전경을 얻을 때(훅)와 **이 값이 참 → 거짓으로 바뀔 때** 예약한다. 앞의 것만 있으면
+    입력란에서 치다가 같은 창의 시계를 눌렀을 때 전경이 이미 우리라 영영 판단하지 않는다.
   - **250ms 기다렸다가 판단한다.** 창이 먼저 활성화되고 웹뷰의 포커스 이벤트는 몇 ms 뒤에 온다 —
     즉시 판단하면 정당한 입력란 클릭까지 되돌려 버린다.
     실측: 위젯 클릭 시 82ms 에 전경을 얻었다가 290ms 에 반환, 입력란 클릭 시에는 계속 유지.
   - **`WS_EX_NOACTIVATE` 로 막는 방식은 쓸 수 없다** (실측). 활성화는 확실히 막히지만 클릭이
     DOM 포커스도 잡지 못해 텍스트 입력이 통째로 죽는다 — 입력란을 누르고 쳐도 글자가 안 들어갔다.
   - 돌려줄 대상은 훅이 기억한 "우리가 아니었던 마지막 전경 창"이다. 바탕화면·작업표시줄은
-    제외한다 — 거기로 돌려주면 IME 가 다시 갈 곳을 잃는다.
+    제외한다 — 거기로 돌려주면 IME 가 다시 갈 곳을 잃는다. **우리 프로세스의 창**(트레이 메뉴용
+    숨은 창·파일 대화상자)도 기억하지 않는다 — 숨은 창이 기억되면 반환이 조용히 취소됐다.
+  - 판정은 순수 함수 `focus_decision` 이다(테스트 있음). **잘못 돌려주는 쪽이 더 나쁘므로** 다음은
+    아무것도 하지 않는다: 직전 전경이 바탕화면이었다(옛 앱이 튀어나온다), 대상이 최소화됐다
+    (`IsWindowVisible` 은 최소화된 창에도 참 — Win+D 로 치운 앱을 깨운다), 대상이 cloaked 다
+    (다른 가상 데스크톱으로 넘어간다). 마우스 버튼이 눌려 있으면(드래그 중) 100ms 씩 미룬다.
 - 히트 영역 click-through (`window.rs::start_hit_test`): 잠금 상태에서 커서가 위젯 사각형 밖이면 `set_ignore_cursor_events(true)` → 빈 영역 클릭이 바탕화면 아이콘으로 통과. 프론트가 `set_hit_regions` 로 사각형을 보낸다 (편집 모드·설정 패널 열림 = 비활성).
-- 팝업·메뉴 닫기는 `core/dismiss.ts::useDismiss` (창 안 바깥 클릭 + 히트 영역 밖 클릭 `hit://outside-press` + Esc). 창 `blur` 는 always-on-bottom 창에서 클릭 직후에도 발생하므로 쓰지 않는다. 위젯 밖으로 튀어나오는 팝업은 `setOverlayRect` 로 히트 영역 등록.
+- 팝업·메뉴 닫기는 `core/dismiss.ts::useDismiss` (창 안 바깥 클릭 + 히트 영역 밖 클릭 `hit://outside-press` + Esc).
+  "밖" 은 위젯 사각형 밖 **또는 커서 밑 창이 우리가 아님**(`cursor_over_us`)이다 — 사각형만 보면 위젯을 덮은 앱 창을 눌러도 팝업이 안 닫혔다. 창 `blur` 는 always-on-bottom 창에서 클릭 직후에도 발생하므로 쓰지 않는다. 위젯 밖으로 튀어나오는 팝업은 `setOverlayRect` 로 히트 영역 등록.
 - 편집 모드의 **다중 선택**: 빈 곳 드래그(마키) 또는 Ctrl/Shift 클릭으로 고르고, 하나를 끌면 전부 같은 만큼 움직인다
   (`core/layout.ts` — 격자 맞춤은 끄는 위젯에만 적용하고 그 차이를 전부에 더한다. 각자를 따로 맞추면 간격이 무너진다.
   경계 보정도 묶음 전체로 본다). 원위치는 드래그를 **시작할 때** 찍는다 — 매 프레임 현재 좌표에 더하면 반올림 오차가 쌓인다.

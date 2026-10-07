@@ -749,12 +749,15 @@ fn is_our_process(h: windows_sys::Win32::Foundation::HWND) -> bool {
 #[cfg(target_os = "windows")]
 fn cursor_over_us(app: &AppHandle) -> bool {
     use windows_sys::Win32::Foundation::POINT;
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetAncestor, WindowFromPoint, GA_ROOT};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetAncestor, WindowFromPoint, GA_ROOTOWNER};
     let (Some(me), Some((x, y))) = (main_hwnd(app), cursor_pos()) else { return true };
     // SAFETY: 값으로 넘기는 좌표와, 그 결과 핸들에 대한 조회다.
     unsafe {
         let h = WindowFromPoint(POINT { x, y });
-        !h.is_null() && GetAncestor(h, GA_ROOT) as isize == me
+        // `GA_ROOT` 만 보면 우리가 **소유한** 팝업(WebView2 의 드롭다운, 파일 선택 대화상자)이 바깥이 된다 —
+        // 그 안을 눌렀는데 팝업이 닫힌다. 소유자 사슬의 뿌리가 우리이거나, 우리 프로세스의 창이면 안쪽이다.
+        !h.is_null()
+            && (GetAncestor(h, GA_ROOTOWNER) as isize == me || is_our_process(h))
     }
 }
 #[cfg(not(target_os = "windows"))]
@@ -1006,6 +1009,9 @@ static HOLD_Z: AtomicBool = AtomicBool::new(false);
 /// 지금 z 를 옮기는 것은 우리다 (`enforce_z_order`) — 막지 않는다.
 #[cfg(target_os = "windows")]
 static OWN_Z_MOVE: AtomicBool = AtomicBool::new(false);
+/// 다른 서브클래스(tao)와 겹치지 않을 아무 id. 같은 (proc, id) 로 다시 부르면 덮어쓸 뿐이다.
+#[cfg(target_os = "windows")]
+const SUBCLASS_ID: usize = 0x64_6b_62; // "dkb"
 
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn hold_z_proc(
@@ -1016,9 +1022,9 @@ unsafe extern "system" fn hold_z_proc(
     _id: usize,
     _data: usize,
 ) -> windows_sys::Win32::Foundation::LRESULT {
-    use windows_sys::Win32::UI::Shell::DefSubclassProc;
+    use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        SWP_NOZORDER, WINDOWPOS, WM_WINDOWPOSCHANGING,
+        SWP_NOZORDER, WINDOWPOS, WM_NCDESTROY, WM_WINDOWPOSCHANGING,
     };
     if msg == WM_WINDOWPOSCHANGING
         && lparam != 0
@@ -1029,6 +1035,11 @@ unsafe extern "system" fn hold_z_proc(
         let wp = unsafe { &mut *(lparam as *mut WINDOWPOS) };
         wp.flags |= SWP_NOZORDER;
     }
+    if msg == WM_NCDESTROY {
+        // 창이 사라지는 마지막 메시지 — 여기서 떼야 한다 (SetWindowSubclass 의 규약).
+        // SAFETY: 이 프로시저를 건 바로 그 (proc, id) 를 떼는 호출이다.
+        unsafe { RemoveWindowSubclass(hwnd, Some(hold_z_proc), SUBCLASS_ID) };
+    }
     // SAFETY: 서브클래스 프로시저 안에서 다음 프로시저로 넘기는 정해진 호출이다.
     unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
 }
@@ -1038,10 +1049,8 @@ unsafe extern "system" fn hold_z_proc(
 pub fn hold_z_on_activate(app: &AppHandle) {
     use windows_sys::Win32::UI::Shell::SetWindowSubclass;
     let Some(me) = main_hwnd(app) else { return };
-    // 다른 서브클래스(tao)와 겹치지 않을 아무 id. 같은 (proc, id) 로 다시 부르면 덮어쓸 뿐이다.
-    const ID: usize = 0x64_6b_62; // "dkb"
     // SAFETY: me 는 살아 있는 메인 창이고, 프로시저는 정적 함수라 창보다 오래 산다.
-    if unsafe { SetWindowSubclass(me as _, Some(hold_z_proc), ID, 0) } == 0 {
+    if unsafe { SetWindowSubclass(me as _, Some(hold_z_proc), SUBCLASS_ID, 0) } == 0 {
         log::warn!("z 상승 차단 서브클래스를 걸지 못했습니다 — 클릭 시 잠깐 앱 위로 올라올 수 있습니다");
     }
 }

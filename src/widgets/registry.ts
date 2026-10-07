@@ -13,7 +13,6 @@ import { weatherWidget } from "./weather";
 import { notesWidget } from "./notes";
 import { playtimeWidget } from "./playtime";
 import { githubWidget } from "./github";
-import { waterWidget } from "./water";
 import { settingsWidget } from "./settings";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -29,7 +28,6 @@ export const WIDGETS: WidgetDefinition<any>[] = [
   notesWidget,
   playtimeWidget,
   githubWidget,
-  waterWidget,
 ];
 
 export const widgetById = (id: string) => WIDGETS.find((w) => w.id === id);

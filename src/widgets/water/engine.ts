@@ -48,6 +48,11 @@ const WHEEL_STEP = Math.PI / 12;
 const WHEEL_PITCH = Math.PI / 36;
 /** 등각 그림이 카드에서 차지하는 비율 */
 const ISO_FIT = 0.92;
+/**
+ * 잡힌 채 포인터 이벤트가 이만큼 끊기면 놓은 것으로 친다 (ms). 실기에서 가장자리 드래그 뒤 pointerup 이
+ * 사라져 통이 기운 채 영영 남았다 — 2D 때 보고된 "건드리지 않았는데 10° 기울어진 채 정지" 가 이것이다.
+ */
+const DRAG_TIMEOUT = 1500;
 const DEBUG_OVERLAY = false;
 
 type Drag =
@@ -95,6 +100,8 @@ export class WaterEngine {
   private placed = false;
 
   private drag: Drag | null = null;
+  /** 마지막 포인터 이벤트 시각 (ms) — 잡힌 채 소식이 끊기면 놓은 것으로 친다 */
+  private pointerAt = 0;
   private hover: "move" | "rotate" | null = null;
 
   private raf = 0;
@@ -143,6 +150,8 @@ export class WaterEngine {
     this.on(canvas, "wheel", (e) => this.onWheel(e as WheelEvent), { passive: true });
     this.on(canvas, "dblclick", () => this.goHome());
     this.on(document, "visibilitychange", () => { if (!document.hidden) this.wake(); });
+    // 창이 포커스를 잃으면(대시보드는 클릭 250ms 뒤 포커스를 돌려준다) 그 뒤의 pointerup 은 오지 않는다
+    this.on(window, "blur", () => this.endDrag());
 
     this.readColors();
     this.resize();
@@ -352,6 +361,7 @@ export class WaterEngine {
       steps++;
     }
     if (steps === MAX_STEPS) this.acc = 0;
+    if (this.drag && now - this.pointerAt > DRAG_TIMEOUT) this.endDrag();
     this.frames++;
     this.stepsTotal += steps;
     this.draw();
@@ -561,6 +571,7 @@ export class WaterEngine {
 
   private onDown(e: PointerEvent) {
     if (e.button !== 0 || this.drag) return;
+    this.pointerAt = performance.now();
     const p = this.local(e);
     const body = this.bodyAt(p);
     try { this.canvas.setPointerCapture(e.pointerId); } catch { /* 합성 이벤트(개발 페이지)에는 활성 포인터가 없다 */ }
@@ -589,6 +600,9 @@ export class WaterEngine {
     const d = this.drag;
     if (!d) { this.setHover(this.bodyAt(p) ? "move" : this.modeAt(p)); return; }
     if (e.pointerId !== d.id) return;
+    this.pointerAt = performance.now();
+    // 단추가 이미 떨어져 있는데 pointerup 을 못 받았다 — 지금 놓은 것으로 친다.
+    if (e.buttons === 0) { this.endDrag(); return; }
     if (d.mode === "body") {
       // 화면 가로 = 통의 (x−z)/√2 방향, 화면 세로 = y (아래로 = 물속으로)
       const voxel = BOX / (this.layout?.res ?? 1);
@@ -622,8 +636,15 @@ export class WaterEngine {
   private onUp(e: PointerEvent) {
     const d = this.drag;
     if (!d || e.pointerId !== d.id) return;
+    this.endDrag();
+  }
+
+  /** 잡은 것을 놓는다 — pointerup, 창 blur, 소식 끊김 모두 여기로 */
+  private endDrag() {
+    const d = this.drag;
+    if (!d) return;
     this.drag = null;
-    if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
+    try { if (this.canvas.hasPointerCapture(d.id)) this.canvas.releasePointerCapture(d.id); } catch { /* 이미 풀렸다 */ }
     if (d.mode === "body") {
       d.body.grab = null;
       this.canvas.style.cursor = "grab";

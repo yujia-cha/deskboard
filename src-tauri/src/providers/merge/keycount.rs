@@ -20,6 +20,7 @@ const SETTLE_AT: u64 = 100;
 
 /// 256비트 "눌려 있음" 비트맵에서 **새 누름**만 true.
 /// 자동 반복과 이미 눌린 키는 false, 키를 뗄 때(`is_break`)는 비트를 지우고 false.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn observe(down: &mut [u64; 4], vk: u8, is_break: bool) -> bool {
     let (i, mask) = (usize::from(vk >> 6), 1u64 << (vk & 63));
     if is_break {

@@ -28,12 +28,6 @@ export interface SimParams {
   viscosityPasses: number;
   /** 이웃 입자끼리 당기는 세기 (위치 비율) — 표면장력·응집 */
   cohesion: number;
-  /**
-   * 성긴 칸을 되돌리는 세기 — 압력 보정의 반대 방향.
-   * 밀도 보정이 "뭉친 칸을 밀어내기"만 하면 세게 흔든 물은 흩어진 채 남아 부피가 불어난다
-   * (실측: 무중력에서 통의 70% 를 덮었다, 물 45%). `params.ts` 가 0.6 으로 고정한다.
-   */
-  tension: number;
   /** 벽에 닿을 때마다 접선 속도를 깎는 비율 0~1 */
   friction: number;
   /** 벽 법선 반발 계수 0~1 */
@@ -219,7 +213,7 @@ export class FlipSim {
     this.prevU.set(this.u);
     this.prevV.set(this.v);
     if (p.viscosity > 0) this.smooth(p.viscosity, p.viscosityPasses);
-    this.solve(p.pressureIters, p.tension);
+    this.solve(p.pressureIters);
     this.toParticles(p.flipRatio);
   }
 
@@ -443,7 +437,7 @@ export class FlipSim {
   }
 
   /** 비압축성 — Gauss-Seidel + 과이완, 입자가 뭉친 칸은 밀도 drift 를 함께 덜어 낸다. */
-  private solve(iters: number, tension: number) {
+  private solve(iters: number) {
     const { n, u, v, s, cellType, density, fluidCells } = this;
     const over = 1.9;
     // 유체 칸만 모아 둔다 — 빈 칸까지 매 반복 훑으면 물이 적을수록 헛돈다.
@@ -456,22 +450,14 @@ export class FlipSim {
     }
     const rest = this.restDensity;
     for (let it = 0; it < iters; it++) {
-      // 훑는 방향을 반복마다 번갈아 바꾼다. 한 방향으로만 훑으면 Gauss-Seidel 이 그쪽으로 치우쳐
-      // 무중력에서 물이 옆으로 흘러갔다 (실측: 2초에 통의 5%).
-      const backward = it % 2 === 1;
-      for (let kk = 0; kk < count; kk++) {
-        const c = fluidCells[backward ? count - 1 - kk : kk];
+      for (let k = 0; k < count; k++) {
+        const c = fluidCells[k];
         const right = c + n, top = c + 1;
         const sx0 = s[c - n], sx1 = s[right], sy0 = s[c - 1], sy1 = s[top];
         let div = u[right] - u[c] + v[top] - v[c];
         if (rest > 0) {
           const compression = density[c] - rest;
-          // 뭉친 칸은 밀어내고(Müller), 성긴 칸은 tension 만큼 끌어당긴다.
-          // **벽에 닿은 칸은 끌어당기지 않는다** — 입자가 벽에서 반지름만큼 떨어져 있고 벽 칸으로 가는
-          // 몫이 사라져 밀도가 늘 낮게 나온다. 거기서 당기면 물이 벽마다 얇은 막으로 들러붙었다
-          // (실측: 중력을 옆으로 돌리면 반대쪽 벽에 물의 5~6%).
           if (compression > 0) div -= compression;
-          else if (sx0 + sx1 + sy0 + sy1 === 4) div -= tension * compression;
         }
         const p = (-div / (sx0 + sx1 + sy0 + sy1)) * over;
         u[c] -= sx0 * p;

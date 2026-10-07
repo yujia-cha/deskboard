@@ -46,7 +46,6 @@ describe("물리 값", () => {
     const c = calmed(p, 1);
     expect(c.flipRatio).toBeLessThanOrEqual(0.3);
     expect(c.drag).toBeGreaterThanOrEqual(3);
-    expect(c.tension).toBe(p.tension); // 부피를 지키는 몫이라 가라앉힐 때도 그대로
     expect(calmed(p, 5)).toEqual(c); // 1 에서 멈춘다
   });
 });

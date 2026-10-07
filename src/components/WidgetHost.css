@@ -1,0 +1,34 @@
+/* 위젯을 그릴 수 없을 때(불러오는 중·오류·사라짐) 카드 안에 대신 보이는 것 */
+.widget-fallback {
+  display: flex; flex-direction: column; gap: 4px;
+  height: 100%; overflow: hidden;
+  font-size: var(--fs-label); color: var(--text);
+}
+.widget-fallback strong { font-weight: var(--fw-bold); }
+.widget-fallback.error strong { color: var(--danger); }
+.widget-fallback p { margin: 0; }
+.widget-fallback pre {
+  margin: 0; flex: 1; min-height: 0; overflow: auto;
+  font-size: var(--fs-micro); color: var(--text-dim); white-space: pre-wrap; word-break: break-all;
+}
+.widget-fallback-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.widget-fallback-actions button {
+  background: var(--fill); border: 0; border-radius: 6px; padding: 2px 8px;
+  color: var(--text); font-size: var(--fs-micro);
+}
+.widget-fallback-actions button:hover { background: var(--fill-hover); }
+
+/* HTML(iframe) 위젯 — 카드 안을 꽉 채우고 배경은 투명 (카드 표면이 비친다) */
+.frame-widget { position: relative; width: 100%; height: 100%; }
+.frame-widget iframe { width: 100%; height: 100%; border: 0; background: transparent; color-scheme: normal; display: block; }
+.frame-widget-overlay {
+  position: absolute; inset: 0; display: flex; flex-direction: column; gap: 6px;
+  align-items: center; justify-content: center; text-align: center;
+  font-size: var(--fs-label); color: var(--text-dim); background: var(--scrim);
+}
+.frame-widget-overlay button { background: var(--fill); border: 0; border-radius: 6px; padding: 3px 10px; color: var(--text); }
+.frame-widget-error {
+  position: absolute; left: 0; right: 0; bottom: 0; border: 0; text-align: left;
+  padding: 2px 6px; font-size: var(--fs-micro); color: var(--danger); background: var(--surface-strong);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}

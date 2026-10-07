@@ -4,6 +4,8 @@ import { useSettings } from "./core/settings";
 import { invokeInOrder, useEvent } from "./core/ipc";
 import { useWallpaper } from "./core/wallpaper";
 import { startUpdater } from "./core/updater";
+import { t, useConfig } from "./core/config";
+import { useRegistry } from "./core/widgetRegistry";
 import { Canvas } from "./components/Canvas";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { UpdateDot } from "./components/UpdateDot";
@@ -31,8 +33,9 @@ export default function App() {
   // Windows 의 IME 가 "사용하지 않음" 으로 넘어가 한/영 키가 갈 곳을 잃는다. 백엔드가 그때만
   // 원래 창에 포커스를 돌려줄 수 있게, 여기서 진짜 입력 여부를 알려 준다.
   useEffect(() => {
+    // HTML 위젯(iframe) 안의 입력란은 셸에서 보이지 않는다 — 브리지가 알려 준 표시(data-editable)를 믿는다.
     const editable = (el: Element | null) =>
-      !!el && (el.matches("input, textarea, select") || (el as HTMLElement).isContentEditable);
+      !!el && (el.matches("input, textarea, select, iframe[data-editable='1']") || (el as HTMLElement).isContentEditable);
     // focusout 은 새 포커스가 정해지기 **전에** 오므로 한 틱 뒤에 읽는다.
     const report = () => setTimeout(
       () => invokeInOrder("ui_set_text_focus", { active: editable(document.activeElement) }), 0);
@@ -44,7 +47,12 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // 설정 파일과 위젯 폴더를 먼저 읽는다 — 저장된 배치를 펼칠 때 위젯 정의(기본값·migrate)와
+  // config 의 기본값이 이미 있어야 한다. 둘 다 실패해도 throw 하지 않고 기본값으로 뜬다.
+  useEffect(() => {
+    Promise.all([useConfig.getState().init(), useRegistry.getState().init()]).finally(() => { load(); });
+  }, [load]);
+  useConfig((c) => c.strings); // 문구 파일이 바뀌면 편집 바를 다시 그린다
   useEffect(() => { if (loaded) startUpdater(); }, [loaded]);
 
   // 카드 뒤에 깔 블러된 배경화면 (진짜 반투명)
@@ -96,11 +104,9 @@ export default function App() {
       <Canvas />
       {!locked && (
         <div className="edit-bar">
-          {selection.length > 1
-            ? `${selection.length}개 선택 — 하나를 끌면 함께 움직입니다 · Esc: 선택 해제`
-            : "편집 모드 — 헤더 드래그: 이동 · 빈 곳 드래그: 여러 개 선택 · Ctrl/Shift 클릭: 추가 · 테두리·모서리 드래그: 크기"}
-          <button onClick={() => openSettings(null)}>⚙ 설정<UpdateDot className="inline" /></button>
-          <button onClick={() => setLocked(true)}>🔒 잠금</button>
+          {selection.length > 1 ? t("multi", { n: selection.length }) : t("hint")}
+          <button onClick={() => openSettings(null)}>{t("settings")}<UpdateDot className="inline" /></button>
+          <button onClick={() => setLocked(true)}>{t("lock")}</button>
         </div>
       )}
       <SettingsPanel />

@@ -6,6 +6,7 @@
 
 mod autostart;
 mod providers;
+mod userland;
 mod window;
 
 pub fn run() {
@@ -30,6 +31,8 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
 
     builder
+        // 위젯 폴더의 파일을 서빙한다 (iframe 위젯의 상대 경로·이미지). `http://dbw.localhost/<id>/<경로>`
+        .register_asynchronous_uri_scheme_protocol("dbw", userland::scheme::handle)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -41,6 +44,8 @@ pub fn run() {
         // 업데이트를 설치한 뒤 앱을 다시 띄우는 데 쓴다 (`process:allow-restart`).
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            // 설정 파일(트레이 문구)을 읽어야 하므로 트레이보다 먼저.
+            userland::init(app.handle());
             window::build_tray(app.handle())?;
             // Win+D(바탕화면 보기)로 대시보드가 같이 숨지 않게 한다.
             window::exclude_from_show_desktop(app.handle());
@@ -108,6 +113,27 @@ pub fn run() {
             providers::github::github_logout,
             providers::github::github_set_active,
             providers::github::github_fetch,
+            providers::scrap::scrap_status,
+            providers::scrap::scrap_set_key,
+            providers::scrap::scrap_clear_key,
+            providers::scrap::scrap_set_active,
+            providers::scrap::scrap_get,
+            providers::scrap::scrap_refresh,
+            providers::scrap::scrap_wake,
+            userland::widgets_list,
+            userland::widgets_bundle,
+            userland::widgets_open_dir,
+            userland::widgets_eject,
+            userland::widgets_disable,
+            userland::config_get,
+            userland::config_open_dir,
+            userland::widget_command_start,
+            userland::widget_command_stop,
+            userland::widget_command_run_now,
+            userland::widget_command_last,
+            userland::widget_storage_get,
+            userland::widget_storage_set,
+            userland::widget_storage_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running deskboard");

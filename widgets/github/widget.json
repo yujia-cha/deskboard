@@ -1,0 +1,17 @@
+{
+  "$schema": "../widget.schema.json",
+  "title": "GitHub",
+  "icon": "🐙",
+  "description": "기여도 잔디, 저장소 현황, 알림 개수",
+  "entry": "index.tsx",
+  "defaultSize": { "w": 320, "h": 260 },
+  "minSize": { "w": 190, "h": 80 },
+  "settingsSchema": [
+    { "key": "repos", "label": "지켜볼 저장소 (쉼표로 여러 개, 8개까지)", "type": "text", "default": "",
+      "placeholder": "owner/repo, owner/other" },
+    { "key": "showContributions", "label": "기여도 잔디", "type": "boolean", "default": true },
+    { "key": "showRepos", "label": "저장소별 현황", "type": "boolean", "default": true },
+    { "key": "showNotifications", "label": "알림 개수", "type": "boolean", "default": true }
+  ],
+  "provider": "github"
+}

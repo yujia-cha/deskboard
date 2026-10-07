@@ -282,7 +282,7 @@ fn canvas_geometry(app: &AppHandle) -> ((i32, i32, u32, u32), (i32, i32)) {
 ///  - 전경 창이 이 모니터를 통째로 덮고 있는가 (전체화면 게임·영상)
 ///
 /// 판단이 틀려도 손해는 스냅샷 한 번이다 — 다시 보이면 다음 주기에 따라잡는다.
-fn dashboard_visible(app: &AppHandle) -> bool {
+pub(crate) fn dashboard_visible(app: &AppHandle) -> bool {
     use tauri::Manager;
     if let Some(w) = app.get_webview_window("main") {
         if matches!(w.is_visible(), Ok(false)) {

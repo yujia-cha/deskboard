@@ -1,0 +1,18 @@
+{
+  "$schema": "../widget.schema.json",
+  "title": "플레이타임",
+  "icon": "🎮",
+  "description": "게임과 등록한 프로그램의 사용 시간",
+  "entry": "index.tsx",
+  "defaultSize": { "w": 320, "h": 180 },
+  "minSize": { "w": 190, "h": 90 },
+  "settingsSchema": [
+    { "key": "range", "label": "기간", "type": "select", "default": "today",
+      "options": [{ "value": "today", "label": "오늘" }, { "value": "week", "label": "최근 7일" }] },
+    { "key": "extra", "label": "함께 셀 프로그램 (쉼표로 여러 개)", "type": "text", "default": "",
+      "placeholder": "code, chrome, discord" },
+    { "key": "topCount", "label": "차트에 표시할 개수", "type": "number", "default": 4, "min": 1, "max": 10, "step": 1 },
+    { "key": "showSessions", "label": "오늘의 구간 표시", "type": "boolean", "default": true }
+  ],
+  "provider": "activity"
+}

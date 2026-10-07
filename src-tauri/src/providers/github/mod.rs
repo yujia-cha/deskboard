@@ -29,7 +29,10 @@ static REPOS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// 토큰이나 저장소가 막 바뀌었다 — 자고 있지 말고 바로 다시 읽어라.
 static DIRTY: AtomicBool = AtomicBool::new(false);
 
-const POLL: Duration = Duration::from_secs(5 * 60);
+/// 폴링 주기. config.jsonc 의 `intervals.github` (초, 최소 60).
+fn poll() -> Duration {
+    crate::userland::config::interval("github", Duration::from_secs(5 * 60), Duration::from_secs(60))
+}
 const SLICE: Duration = Duration::from_secs(2);
 /// 한 번에 들여다볼 저장소 수. 질의가 커지면 GraphQL 비용도 같이 커진다.
 const MAX_REPOS: usize = 8;
@@ -306,7 +309,7 @@ impl Provider for GithubProvider {
                 let Some(tok) = token(&app) else {
                     let _ = app.emit("github://update", GithubSnapshot { authed: false, ..Default::default() });
                     // 토큰이 없을 때 5분을 통째로 자면, 방금 로그인해도 한참 반영되지 않는다.
-                    nap(POLL);
+                    nap(poll());
                     continue;
                 };
                 let repos = REPOS.lock().ok().map(|r| r.clone()).unwrap_or_default();
@@ -318,7 +321,7 @@ impl Provider for GithubProvider {
                 let _ = app.emit("github://update", snap);
 
                 // 한도를 다 썼거나 실패했으면 더 길게 쉰다
-                nap(if failed { rate_limit_backoff(POLL) } else { POLL });
+                nap(if failed { rate_limit_backoff(poll()) } else { poll() });
             })
             .expect("spawn github thread");
     }

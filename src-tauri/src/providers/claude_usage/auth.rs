@@ -166,6 +166,39 @@ pub async fn refresh(http: &reqwest::Client, path: &Path, token: &Token) -> Resu
     Ok(t)
 }
 
+/// 리프레시 토큰은 쓸 때마다 바뀐다 — 둘이 동시에 갱신하면 하나가 무효가 되므로 전역으로 직렬화한다.
+static REFRESH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+const LOGIN_REQUIRED: &str = "Claude 로그인이 필요합니다";
+
+/// 잠근 채로 파일을 다시 읽어, 그 사이 다른 호출이 이미 갱신했으면 그 값을 쓰고 아니면 갱신한다.
+pub async fn refresh_locked(http: &reqwest::Client, path: &Path, stale: &Token) -> Result<Token, String> {
+    let _g = REFRESH_LOCK.lock().await;
+    let cur = load(path).ok_or(LOGIN_REQUIRED)?;
+    if cur.refresh_token != stale.refresh_token {
+        return Ok(cur);
+    }
+    refresh(http, path, &cur).await
+}
+
+async fn valid_token_with<F, Fut>(path: &Path, refresh: F) -> Result<Token, String>
+where
+    F: FnOnce(Token) -> Fut,
+    Fut: std::future::Future<Output = Result<Token, String>>,
+{
+    let _g = REFRESH_LOCK.lock().await;
+    let t = load(path).ok_or(LOGIN_REQUIRED)?;
+    if t.expires_at >= now_ms() + 60_000 {
+        return Ok(t);
+    }
+    refresh(t).await
+}
+
+/// 로그인 파일을 다시 읽어 만료가 가까우면 갱신한 토큰을 돌려준다 (스크랩의 CLI 용).
+pub async fn valid_token(http: &reqwest::Client, path: &Path) -> Result<Token, String> {
+    valid_token_with(path, |t| async move { refresh(http, path, &t).await }).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,5 +236,34 @@ mod tests {
         let http = reqwest::Client::new();
         let err = finish(&http, &pending, Path::new("x"), "code#wrong").await.unwrap_err();
         assert!(err.contains("state"));
+    }
+
+    fn temp_token_path(tag: &str) -> PathBuf {
+        token_path(&std::env::temp_dir().join(format!("deskboard-claude-{tag}-{}", std::process::id())))
+    }
+
+    #[tokio::test]
+    async fn valid_token_missing_file_is_login_required() {
+        let p = temp_token_path("missing");
+        clear(&p);
+        let e = valid_token_with(&p, |_| async { panic!("갱신하면 안 됩니다") }).await.unwrap_err();
+        assert_eq!(e, "Claude 로그인이 필요합니다");
+    }
+
+    #[tokio::test]
+    async fn valid_token_refreshes_only_when_expiring() {
+        let p = temp_token_path("expiry");
+        let fresh = Token { access_token: "a".into(), refresh_token: "r".into(), expires_at: now_ms() + 3_600_000 };
+        save(&p, &fresh).unwrap();
+        let t = valid_token_with(&p, |_| async { Err("갱신하면 안 됩니다".to_string()) }).await.unwrap();
+        assert_eq!(t, fresh);
+
+        let old = Token { expires_at: now_ms() + 10_000, ..fresh.clone() };
+        save(&p, &old).unwrap();
+        let renewed = Token { access_token: "b".into(), refresh_token: "r2".into(), expires_at: now_ms() + 3_600_000 };
+        let r = renewed.clone();
+        let t = valid_token_with(&p, |t| async move { assert_eq!(t.access_token, "a"); Ok(r) }).await.unwrap();
+        assert_eq!(t, renewed);
+        clear(&p);
     }
 }

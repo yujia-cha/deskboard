@@ -1,0 +1,54 @@
+/*
+ * deskboard 사용자 CSS 샘플 — 이 파일은 앱이 시작할 때마다 다시 써집니다. 직접 고치지 마세요.
+ *
+ * 쓰는 법: 같은 폴더에 `user.css` 라는 이름으로 복사해서 고치세요. 저장하면 바로 반영됩니다.
+ * 이 CSS 는 앱 스타일 맨 끝에 들어가므로 같은 선택자(`:root`)로 적으면 기본값을 덮어씁니다.
+ *
+ * 색·글자·모션은 하드코딩이 아니라 CSS 변수(토큰)로 되어 있습니다. 쓸 수 있는 토큰:
+ *
+ *   색          --accent --text --text-dim --surface --surface-strong --border --menu-bg
+ *               --ok --warn --danger
+ *               --fill --fill-hover --fill-active   (카드 위에 까는 채움)
+ *               --track                             (빈 진행바)
+ *               --shadow-card --shadow-pop --scrim
+ *               --on-light                          (밝은 브랜드색 위 글자, 고정)
+ *               --on-text                           (--text 를 배경으로 깔았을 때의 글자색)
+ *   모양        --radius --gap --border-w
+ *   글자        --font --mono
+ *               --fs-value --fs-title --fs-sub --fs-label --fs-meta --fs-micro
+ *               --fw-value --fw-title --fw-bold --fw-label --lh-tight
+ *   모션        --ease --dur --dur-fast
+ *   카드        --card-bg --card-border --card-shadow --card-highlight
+ *
+ * 팔레트별로 다르게 하려면 `:root[data-palette="light"]` 처럼 속성으로 좁히세요.
+ *   data-palette    = "dark" | "light"
+ *   data-theme-mode = "translucent" | "solid"
+ *   data-card-style = "glass" | "minimal" | "borderless" | "none"
+ *
+ * 주의 — 앱이 설정 슬라이더 값을 <html> 에 **인라인 스타일**로 직접 꽂는 토큰이 있습니다:
+ *   --accent  --radius  --surface-alpha  --border-k  --border-w
+ * 인라인 스타일은 일반 CSS 보다 우선하므로, 이 다섯 개를 덮으려면 `!important` 가 필요합니다.
+ */
+
+/* 예 1) 글자 크기를 조금 키운다 (인라인 토큰이 아니라 그냥 적어도 된다) */
+/*
+:root {
+  --fs-value: 32px;
+  --fs-title: 15px;
+}
+*/
+
+/* 예 2) 강조색과 모서리를 고정한다 (인라인 토큰이라 !important 필수) */
+/*
+:root {
+  --accent: #ff7ab8 !important;
+  --radius: 6px !important;
+}
+*/
+
+/* 예 3) 밝은 팔레트에서만 경고색을 바꾼다 */
+/*
+:root[data-palette="light"] {
+  --warn: #9a5b00;
+}
+*/

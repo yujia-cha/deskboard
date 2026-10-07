@@ -1,0 +1,14 @@
+{
+  "$schema": "../widget.schema.json",
+  "title": "Spotify",
+  "icon": "🎵",
+  "description": "지금 재생 중인 곡과 플레이리스트를 보고 조작",
+  "entry": "index.tsx",
+  "defaultSize": { "w": 360, "h": 320 },
+  "minSize": { "w": 260, "h": 120 },
+  "settingsSchema": [
+    { "key": "showArt", "label": "앨범 아트", "type": "boolean", "default": true },
+    { "key": "showPlaylists", "label": "플레이리스트 목록", "type": "boolean", "default": true }
+  ],
+  "provider": "spotify"
+}

@@ -19,7 +19,10 @@ static ACTIVE: AtomicBool = AtomicBool::new(false);
 /// 프론트가 설정한 좌표.
 static PLACE: Mutex<Option<(f64, f64)>> = Mutex::new(None);
 
-const POLL: Duration = Duration::from_secs(15 * 60);
+/// 폴링 주기. config.jsonc 의 `intervals.weather` (초, 최소 300).
+fn poll() -> Duration {
+    crate::userland::config::interval("weather", Duration::from_secs(15 * 60), Duration::from_secs(300))
+}
 /// 실패 후 다시 시도하기까지.
 const RETRY: Duration = Duration::from_secs(60);
 /// 대기를 이만큼씩 쪼갠다 — 위젯을 막 띄웠거나 도시를 바꿨을 때 15분을 기다리지 않도록.
@@ -298,7 +301,7 @@ impl Provider for WeatherProvider {
                     let _ = app.emit("weather://update", snap);
 
                     // 실패하면 빨리 다시 해본다. 도시를 바꾸면 자다가도 깬다.
-                    nap(if failed { RETRY } else { POLL }, place);
+                    nap(if failed { RETRY } else { poll() }, place);
                 }
             })
             .expect("spawn weather thread");

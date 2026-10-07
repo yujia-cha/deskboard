@@ -181,10 +181,11 @@ async fn poll_once(app: &AppHandle) {
 /// 생기면 주기를 기다리지 않는다 — 그래서 틱은 짧게 돌고 주기는 경과 시간으로 따진다.
 /// Spotify 에는 푸시가 없어 이 창이 유일한 갱신 경로다.
 async fn poll_loop(app: AppHandle) {
-    const PERIOD: Duration = Duration::from_secs(5);
     let mut last: Option<Instant> = None;
     loop {
         tokio::time::sleep(Duration::from_millis(500)).await;
+        // 주기는 config.jsonc 의 `intervals.spotify` (초, 최소 2).
+        let period = crate::userland::config::interval("spotify", Duration::from_secs(5), Duration::from_secs(2));
         let st = app.state::<SpotifyState>();
         let (should_poll, forced) = match st.inner.lock() {
             Ok(mut i) => {
@@ -196,7 +197,7 @@ async fn poll_loop(app: AppHandle) {
             }
             Err(_) => (false, false),
         };
-        if !should_poll || (!forced && last.is_some_and(|t| t.elapsed() < PERIOD)) {
+        if !should_poll || (!forced && last.is_some_and(|t| t.elapsed() < period)) {
             continue;
         }
         last = Some(Instant::now());

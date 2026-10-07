@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "deskboard-widget.schema.json",
+  "title": "deskboard 위젯 manifest (widget.json)",
+  "description": "위젯 폴더의 widget.json. 주석과 마지막 쉼표를 쓸 수 있습니다(JSONC).",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "title": { "type": "string", "description": "위젯 이름. 기본값은 폴더 이름." },
+    "icon": { "type": "string", "description": "아이콘(이모지 등 짧은 글자)." },
+    "description": { "type": "string", "description": "위젯 설명." },
+    "entry": {
+      "type": "string",
+      "description": "진입 파일. .js/.jsx/.ts/.tsx/.mjs 는 모듈 위젯, .html/.htm 은 iframe 위젯. 기본값은 index.tsx, index.jsx, index.ts, index.js, index.html 중 처음 있는 파일."
+    },
+    "defaultSize": { "$ref": "#/definitions/size", "description": "새로 추가할 때의 크기(px). 기본 240x140." },
+    "minSize": { "$ref": "#/definitions/size", "description": "줄일 수 있는 최소 크기(px). 기본 120x80. defaultSize 보다 크면 줄입니다." },
+    "settingsSchema": {
+      "type": "array",
+      "description": "설정 패널에 자동으로 그려질 항목들.",
+      "items": { "$ref": "#/definitions/field" }
+    },
+    "provider": { "type": "string", "description": "정보용. 이 위젯이 쓰는 내장 Provider 이름(예: sysmon)." },
+    "command": { "$ref": "#/definitions/command" },
+    "subscribe": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "iframe 위젯이 받을 내장 Provider 이벤트 이름 목록."
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "size": {
+      "type": "object",
+      "properties": {
+        "w": { "type": "integer", "minimum": 1 },
+        "h": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["w", "h"],
+      "additionalProperties": false
+    },
+    "command": {
+      "type": "object",
+      "description": "주기적으로 실행해 stdout 을 위젯에 전달할 명령.",
+      "properties": {
+        "run": {
+          "description": "실행할 명령. 문자열(셸이 해석) 또는 문자열 배열(argv). shell 이 none 이면 배열이어야 합니다.",
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 }
+          ]
+        },
+        "shell": {
+          "type": "string",
+          "enum": ["powershell", "pwsh", "cmd", "none"],
+          "default": "powershell"
+        },
+        "interval": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 60,
+          "description": "실행 주기(초, 최소 1). 0 이면 시작할 때 한 번과 수동 새로고침만."
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60,
+          "default": 10,
+          "description": "제한 시간(초). 넘으면 강제 종료."
+        },
+        "parse": {
+          "type": "string",
+          "enum": ["text", "json", "lines"],
+          "default": "text",
+          "description": "text: 그대로, json: JSON 으로 해석, lines: 비어 있지 않은 줄의 배열."
+        },
+        "pauseWhenHidden": {
+          "type": "boolean",
+          "default": true,
+          "description": "대시보드가 가려져 있는 동안은 실행하지 않음."
+        }
+      },
+      "required": ["run"],
+      "additionalProperties": false
+    },
+    "field": {
+      "type": "object",
+      "properties": {
+        "key": { "type": "string", "description": "설정 값의 이름." },
+        "label": { "type": "string", "description": "패널에 보이는 이름 (note 는 본문)." },
+        "type": { "type": "string", "enum": ["boolean", "number", "text", "select", "path", "note"] },
+        "showIf": {
+          "type": "object",
+          "description": "같은 위젯의 다른 설정값이 equals 와 같을 때만 이 줄을 보인다.",
+          "properties": {
+            "key": { "type": "string" },
+            "equals": { "type": ["string", "number", "boolean"] }
+          },
+          "required": ["key", "equals"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["key", "label", "type"],
+      "oneOf": [
+        {
+          "properties": { "type": { "const": "boolean" }, "default": { "type": "boolean" } },
+          "required": ["default"]
+        },
+        {
+          "properties": {
+            "type": { "const": "number" },
+            "default": { "type": "number" },
+            "min": { "type": "number" },
+            "max": { "type": "number" },
+            "step": { "type": "number" }
+          },
+          "required": ["default"]
+        },
+        {
+          "properties": {
+            "type": { "const": "text" },
+            "default": { "type": "string" },
+            "placeholder": { "type": "string" }
+          },
+          "required": ["default"]
+        },
+        {
+          "properties": {
+            "type": { "const": "select" },
+            "default": { "type": "string" },
+            "options": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": { "value": { "type": "string" }, "label": { "type": "string" } },
+                "required": ["value", "label"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["default", "options"]
+        },
+        {
+          "properties": {
+            "type": { "const": "path" },
+            "default": { "type": "string" },
+            "pick": { "type": "string", "enum": ["image", "directory"] }
+          },
+          "required": ["default", "pick"]
+        },
+        {
+          "properties": { "type": { "const": "note" } }
+        }
+      ]
+    }
+  }
+}

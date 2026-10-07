@@ -57,7 +57,7 @@ pub async fn fetch(http: &reqwest::Client, token_file: &Path) -> Limits {
     };
     let mut refreshed = false;
     if token.expires_at < auth::now_ms() + 60_000 {
-        match auth::refresh(http, token_file, &token).await {
+        match auth::refresh_locked(http, token_file, &token).await {
             Ok(t) => { token = t; refreshed = true; }
             Err(e) => return fail(format!("{e} — 다시 로그인하세요")),
         }
@@ -74,7 +74,7 @@ pub async fn fetch(http: &reqwest::Client, token_file: &Path) -> Limits {
         Err(e) => return fail(format!("네트워크 오류: {e}")),
     };
     if res.status().as_u16() == 401 && !refreshed {
-        if let Ok(t) = auth::refresh(http, token_file, &token).await {
+        if let Ok(t) = auth::refresh_locked(http, token_file, &token).await {
             res = match call(&t).await { Ok(r) => r, Err(e) => return fail(format!("네트워크 오류: {e}")) };
         }
     }

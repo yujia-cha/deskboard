@@ -18,8 +18,11 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* 위젯 폴더(widgets/**)는 "deskboard" SDK 만 import 한다 — 런타임에는 호스트가 같은 모듈을 넘겨준다 */
+    "paths": { "deskboard": ["./src/sdk/index.ts"] }
   },
-  "include": ["src"],
+  "include": ["src", "widgets"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

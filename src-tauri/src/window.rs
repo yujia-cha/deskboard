@@ -127,21 +127,47 @@ pub fn set_canvas_monitor(app: AppHandle, state: tauri::State<'_, HitRegions>, n
 
 // --- 트레이 ----------------------------------------------------------------------
 
+/// 트레이 메뉴 항목 (id, 기본 문구). 문구는 `strings.jsonc` 의 `tray.<id>` 로 덮어쓸 수 있다.
+const TRAY_ITEMS: [(&str, &str); 5] = [
+    ("toggle_lock", "편집 잠금/해제"),
+    ("toggle_theme", "반투명/단색 전환"),
+    ("settings", "설정..."),
+    ("show", "표시/숨기기"),
+    ("quit", "종료"),
+];
+const TRAY_TOOLTIP: &str = "deskboard";
+
+/// 문구가 바뀌면 메뉴를 다시 짓지 않고 `set_text` 만 하려고 핸들을 들고 있는다 (TRAY_ITEMS 와 같은 순서).
+pub struct TrayHandles {
+    tray: tauri::tray::TrayIcon,
+    items: Vec<MenuItem<tauri::Wry>>,
+}
+
+/// 설정 파일이 바뀐 뒤 트레이 문구와 툴팁을 갱신한다.
+pub fn apply_tray_strings(app: &AppHandle) {
+    let Some(h) = app.try_state::<TrayHandles>() else { return };
+    for (item, (id, default)) in h.items.iter().zip(TRAY_ITEMS) {
+        let _ = item.set_text(crate::userland::config::tray_text(id, default));
+    }
+    let _ = h.tray.set_tooltip(Some(crate::userland::config::tray_text("tooltip", TRAY_TOOLTIP)));
+}
+
 /// 트레이 메뉴. 상태를 가진 항목(잠금/테마)은 프론트로 이벤트만 보내고, 프론트가 진실 원천이다.
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
-    let toggle_lock = MenuItem::with_id(app, "toggle_lock", "편집 잠금/해제", true, None::<&str>)?;
-    let toggle_theme = MenuItem::with_id(app, "toggle_theme", "반투명/단색 전환", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, "settings", "설정...", true, None::<&str>)?;
-    let show = MenuItem::with_id(app, "show", "표시/숨기기", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
+    let items = TRAY_ITEMS
+        .iter()
+        .map(|(id, default)| {
+            MenuItem::with_id(app, *id, crate::userland::config::tray_text(id, default), true, None::<&str>)
+        })
+        .collect::<tauri::Result<Vec<_>>>()?;
     let menu = Menu::with_items(
         app,
-        &[&toggle_lock, &toggle_theme, &settings, &PredefinedMenuItem::separator(app)?, &show, &quit],
+        &[&items[0], &items[1], &items[2], &PredefinedMenuItem::separator(app)?, &items[3], &items[4]],
     )?;
 
-    TrayIconBuilder::with_id("main")
+    let tray = TrayIconBuilder::with_id("main")
         .icon(app.default_window_icon().cloned().expect("default icon"))
-        .tooltip("deskboard")
+        .tooltip(crate::userland::config::tray_text("tooltip", TRAY_TOOLTIP))
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| {
@@ -168,6 +194,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             }
         })
         .build(app)?;
+    app.manage(TrayHandles { tray, items });
     Ok(())
 }
 

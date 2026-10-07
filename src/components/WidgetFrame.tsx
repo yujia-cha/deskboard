@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as RPointerEvent, type ReactNode } from "react";
 import { contentScale, useSettings, type WidgetInstance } from "../core/settings";
 import { groupMove, resizeBox, type Box, type ResizeDir } from "../core/layout";
-import { widgetById } from "../widgets/registry";
+import { useWidgetDef } from "../core/widgetRegistry";
 import "./WidgetFrame.css";
 
 /**
@@ -22,7 +22,8 @@ import "./WidgetFrame.css";
 const RESIZE_DIRS: ResizeDir[] = ["n", "s", "e", "w", "nw", "ne", "sw", "se"];
 
 export function WidgetFrame({ inst, children }: { inst: WidgetInstance; children: (inner: { w: number; h: number }) => ReactNode }) {
-  const def = widgetById(inst.widgetId)!;
+  // 정의가 없는 인스턴스(폴더가 사라짐·오류)도 옮기고 지울 수 있어야 한다 — 최소 크기만 느슨하게.
+  const def = useWidgetDef(inst.widgetId) ?? { title: inst.widgetId, minSize: { w: 60, h: 40 }, singleton: false };
   const locked = useSettings((s) => s.locked);
   const snap = useSettings((s) => s.gridSnap);
   const autoScale = useSettings((s) => s.autoScale);

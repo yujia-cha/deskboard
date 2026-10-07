@@ -1,0 +1,13 @@
+{
+  "$schema": "../widget.schema.json",
+  "title": "캘린더",
+  "icon": "📅",
+  "description": "월간 달력과 일정 관리",
+  "entry": "index.tsx",
+  "provider": "calendar",
+  "defaultSize": { "w": 320, "h": 400 },
+  "minSize": { "w": 230, "h": 230 },
+  "settingsSchema": [
+    { "key": "weekStartsMonday", "label": "월요일 시작", "type": "boolean", "default": false }
+  ]
+}

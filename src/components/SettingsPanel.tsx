@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { contentScale, useSettings, type CardStyle, type Palette, type ThemeMode } from "../core/settings";
-import { WIDGETS, widgetById } from "../widgets/registry";
-import { fieldVisible, type SettingField } from "../widgets/types";
+import { useRegistry, type RegistryEntry } from "../core/widgetRegistry";
+import { useConfig, type FileStatus } from "../core/config";
+import { fieldVisible, type SettingField, type WidgetDefinition } from "../core/widgetTypes";
 import { UPDATER_ENABLED, useUpdater, type UpdateState } from "../core/updater";
 import { UpdateDot } from "./UpdateDot";
 import "./SettingsPanel.css";
@@ -33,13 +34,15 @@ function Slider({ label, value, min, max, step, suffix = "", title, onChange }: 
   );
 }
 
-const SIZE_PRESETS = [{ label: "작게", k: 0.75 }, { label: "기본", k: 1 }, { label: "크게", k: 1.4 }, { label: "아주 크게", k: 1.8 }];
-
 /** 전역 설정 + 선택된 위젯의 스키마 기반 설정 폼. */
 export function SettingsPanel() {
   const s = useSettings();
   const inst = s.instances.find((i) => i.id === s.selected);
-  const def = inst ? widgetById(inst.widgetId) : undefined;
+  const defs = useRegistry((r) => r.defs);
+  const entries = useRegistry((r) => r.entries);
+  const sizePresets = useConfig((c) => c.config.layout.sizePresets);
+  const def = inst ? defs[inst.widgetId] : undefined;
+  const entry = inst ? entries[inst.widgetId] : undefined;
   const [monitors, setMonitors] = useState<{ name: string; primary: boolean; work: { w: number; h: number } }[]>([]);
   const [autoStatus, setAutoStatus] = useState<{ enabled: boolean; path: string | null; dev: boolean } | null>(null);
   const updater = useUpdater();
@@ -68,7 +71,7 @@ export function SettingsPanel() {
               <h4>크기 · 위치</h4>
               <div className="row"><span>프리셋</span>
                 <span className="preset-row">
-                  {SIZE_PRESETS.map((p) => (
+                  {sizePresets.map((p) => (
                     <button key={p.label} onClick={() => s.moveResize(inst.id, {
                       w: Math.max(def.minSize.w, Math.round(def.defaultSize.w * p.k)),
                       h: Math.max(def.minSize.h, Math.round(def.defaultSize.h * p.k)),
@@ -103,6 +106,7 @@ export function SettingsPanel() {
             </section>
             <section>
               <h4>옵션</h4>
+              {entry && <WidgetSource entry={entry} />}
               {(def.settingsSchema ?? []).length === 0 && <p className="dim">이 위젯은 옵션이 없습니다.</p>}
               {def.settingsSchema?.filter((f) => fieldVisible(f, inst.settings)).map((f) => (
                 <Field key={f.key} f={f} value={inst.settings[f.key]} onChange={(v) => s.updateWidgetSettings(inst.id, { [f.key]: v })} />
@@ -183,14 +187,8 @@ export function SettingsPanel() {
                   : "등록 안 됨"}
               </div>
             </section>
-            <section>
-              <h4>위젯 추가</h4>
-              <div className="widget-list">
-                {WIDGETS.filter((w) => !w.singleton).map((w) => (
-                  <button key={w.id} onClick={() => { s.addWidget(w.id); }}>{w.icon} {w.title}</button>
-                ))}
-              </div>
-            </section>
+            <AddWidgets defs={defs} entries={entries} onAdd={s.addWidget} />
+            <ConfigFiles />
             <section>
               <h4>업데이트<UpdateDot className="inline" /></h4>
               <UpdateSection u={updater} />
@@ -200,7 +198,7 @@ export function SettingsPanel() {
               <button className="link" onClick={() => { if (confirm("모든 위젯을 기본 배치로 되돌릴까요?")) s.resetLayout(); }}>↺ 기본 레이아웃으로 초기화</button>
               {s.instances.map((i) => (
                 <button key={i.id} className="link" onClick={() => s.openSettings(i.id)}>
-                  {widgetById(i.widgetId)?.icon} {widgetById(i.widgetId)?.title} <span className="dim">{i.w}×{i.h} @ {i.x},{i.y}</span>
+                  {defs[i.widgetId]?.icon ?? "❔"} {defs[i.widgetId]?.title ?? i.widgetId} <span className="dim">{i.w}×{i.h} @ {i.x},{i.y}</span>
                 </button>
               ))}
             </section>
@@ -208,6 +206,103 @@ export function SettingsPanel() {
         )}
       </div>
     </div>
+  );
+}
+
+const openDir = (id: string | null) => invoke("widgets_open_dir", { id }).catch((e) => alert(String(e)));
+
+/**
+ * 위젯 추가 목록 — 내장 / 내가 만든 위젯으로 나눈다.
+ * 깨진 사용자 위젯도 목록에 보여 준다: 왜 안 뜨는지 알아야 고칠 수 있다.
+ */
+function AddWidgets({ defs, entries, onAdd }: {
+  defs: Record<string, WidgetDefinition>; entries: Record<string, RegistryEntry>; onAdd: (id: string) => void;
+}) {
+  const addable = Object.values(defs).filter((w) => !w.singleton && !w.hidden);
+  const builtin = addable.filter((w) => w.root === "builtin");
+  const user = addable.filter((w) => w.root === "user");
+  const broken = Object.values(entries).filter((e) => e.status === "error");
+  return (
+    <section>
+      <h4>위젯 추가</h4>
+      <div className="widget-list">
+        {builtin.map((w) => <button key={w.id} title={w.description} onClick={() => onAdd(w.id)}>{w.icon} {w.title}</button>)}
+      </div>
+      <h4>내가 만든 위젯</h4>
+      {user.length > 0 && (
+        <div className="widget-list">
+          {user.map((w) => (
+            <button key={w.id} title={w.overridesBuiltin ? "같은 이름의 내장 위젯을 덮어쓰고 있습니다" : w.description} onClick={() => onAdd(w.id)}>
+              {w.icon} {w.title}{w.overridesBuiltin ? " ✎" : ""}
+            </button>
+          ))}
+        </div>
+      )}
+      {broken.map((e) => (
+        <p key={e.id} className="field-note" style={{ color: "var(--danger)" }}>⚠ {e.id}: {e.error}</p>
+      ))}
+      {user.length === 0 && broken.length === 0 && (
+        <p className="dim field-note">widgets 폴더에 폴더를 하나 만들면 그게 위젯이 됩니다. 안의 README.md 를 보세요.</p>
+      )}
+      <p className="dim field-note">
+        내가 만든 위젯의 코드는 대시보드와 같은 권한으로 실행됩니다 — 직접 쓰거나 믿을 수 있는 코드만 넣으세요.
+      </p>
+      <button className="link" onClick={() => openDir(null)}>📂 위젯 폴더 열기</button>
+    </section>
+  );
+}
+
+/** 선택한 위젯이 어디서 왔는지 + 고치는 길 (폴더 열기 / 내장 위젯을 복사해서 고치기). */
+function WidgetSource({ entry }: { entry: RegistryEntry }) {
+  const info = entry.info;
+  if (!info) return null;
+  const eject = () => invoke<string>("widgets_eject", { id: info.id })
+    .then((dir) => alert(`복사했습니다 — 이제 이 사본이 내장 위젯 대신 쓰입니다:\n${dir}`))
+    .catch((e) => alert(String(e)));
+  return (
+    <>
+      <div className="row dim" style={{ fontSize: "var(--fs-meta)" }}>
+        <span>{info.root === "builtin" ? "내장 위젯" : info.overridesBuiltin ? "내 사본 (내장 위젯을 덮어씀)" : "내가 만든 위젯"}</span>
+        <span className="pair">
+          <button className="link" onClick={() => openDir(info.id)}>폴더 열기</button>
+          {info.root === "builtin" && (
+            <button className="link" title="이 위젯을 내 widgets 폴더로 복사합니다. 사본을 고치면 바로 반영됩니다." onClick={eject}>복사해서 고치기</button>
+          )}
+        </span>
+      </div>
+      {entry.warnings.map((w, i) => <p key={i} className="field-note" style={{ color: "var(--warn)" }}>{w}</p>)}
+    </>
+  );
+}
+
+const FILE_HELP: Record<string, string> = {
+  "config.jsonc": "기본값·배치·크기 프리셋·폴링 주기·내장 위젯 덮어쓰기",
+  "strings.jsonc": "트레이 메뉴·편집 바 문구",
+  "user.css": "테마 위에 덮는 스타일",
+};
+
+/** 손으로 고치는 설정 파일들의 상태. 깨진 파일은 무시되고 있다는 걸 여기서 알린다. */
+function ConfigFiles() {
+  const files = useConfig((c) => c.files);
+  const label = (f: FileStatus) =>
+    f.state === "ok" ? (f.messages.length ? "적용됨 (경고 있음)" : "적용됨") : f.state === "error" ? "오류 — 무시 중" : "없음 (기본값)";
+  return (
+    <section>
+      <h4>사용자 설정 파일</h4>
+      {files.map((f) => (
+        <div key={f.file}>
+          <div className="row" title={FILE_HELP[f.file]}>
+            <span>{f.file}</span>
+            <span className="dim" style={f.state === "error" ? { color: "var(--danger)" } : undefined}>{label(f)}</span>
+          </div>
+          {f.messages.map((m, i) => (
+            <p key={i} className="dim field-note" style={{ color: f.state === "error" ? "var(--danger)" : "var(--warn)" }}>{m}</p>
+          ))}
+        </div>
+      ))}
+      <p className="dim field-note">같은 폴더의 *.sample.* 파일을 복사해 이름을 바꿔 쓰세요. 저장하면 바로 반영됩니다.</p>
+      <button className="link" onClick={() => invoke("config_open_dir").catch((e) => alert(String(e)))}>📂 설정 폴더 열기</button>
+    </section>
   );
 }
 

@@ -1,0 +1,10 @@
+/* 대시보드 테마 변수(--text, --accent, --track, --fs-*)를 그대로 쓸 수 있다 — 팔레트를 바꾸면 따라 바뀐다 */
+.card { box-sizing: border-box; height: 100vh; padding: 2px; display: flex; flex-direction: column; gap: 4px; }
+.row { display: flex; justify-content: space-between; align-items: center; color: var(--text-dim); font-size: var(--fs-meta); }
+.row button { background: transparent; border: 0; color: var(--text-dim); cursor: pointer; border-radius: 6px; }
+.row button:hover { color: var(--text); background: var(--fill-hover); }
+.value { font-size: var(--fs-value); font-weight: var(--fw-value); line-height: 1; }
+.value.hot { color: var(--danger); }
+.bar { height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; }
+#fill { height: 100%; width: 0; background: var(--accent); transition: width var(--dur) var(--ease); }
+.dim { color: var(--text-dim); font-size: var(--fs-micro); }

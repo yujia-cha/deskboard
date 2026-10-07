@@ -99,8 +99,9 @@ fn run(app: AppHandle) {
         Box::new(lhm::LhmSource::new()),
     ];
     log::info!("sysmon sources: {:?}", sources.iter().map(|s| s.name()).collect::<Vec<_>>());
-    let interval = Duration::from_secs(2);
     loop {
+        // 주기는 config.jsonc 의 `intervals.sysmon` (초). 매 틱 읽어 바로 반영한다.
+        let interval = crate::userland::config::interval("sysmon", Duration::from_secs(2), Duration::from_secs(1));
         let started = Instant::now();
         let mut out = SensorSample::default();
         for s in sources.iter_mut() {

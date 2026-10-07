@@ -4,6 +4,8 @@ Windows 바탕화면에 상주하는 개인 위젯 대시보드 (Tauri 2 + React
 프레임 없는 투명 창(always-on-bottom)에 둥근 카드 위젯을 자유 배치한다.
 
 ## 기본 위젯
+위젯 코드는 저장소 `widgets/<id>/` 에 있다 (앱에 컴파일하지 않는다 — 아래 "위젯 모듈 시스템"). 아래 표의 Provider 는 백엔드에 컴파일돼 있다.
+
 | id | 백엔드 Provider | 데이터 |
 |---|---|---|
 | `clock` | 없음 | 순수 프론트. 스타일 8종 — 격자 숫자 4종(블록·네온·LED매트릭스·문자도트, `DotDigits` 공용) · 시스템 폰트 · 워드 클락(`words.ts`, en/ko) · 바이너리 · 피보나치(`oddtime.ts`) |
@@ -11,33 +13,40 @@ Windows 바탕화면에 상주하는 개인 위젯 대시보드 (Tauri 2 + React
 | `claude-usage` | `providers/claude_usage` | **구독 한도 %** (5시간 / 주간 전체모델): 위젯 내 OAuth 로그인(`auth.rs`, Claude Code 와 같은 PKCE 흐름·클라이언트 id, 코드 붙여넣기) → 토큰은 `%APPDATA%/com.user.deskboard/claude.json` → `api.anthropic.com/api/oauth/usage` 120초 폴링(429 시 5분 백오프) + 트랜스크립트 변경 시 즉시. Claude Code 의 credentials 파일은 건드리지 않음. 로컬 비용 추정(`*.jsonl` 파싱, `resources/pricing.json`)은 옵션 |
 | `calendar` | `providers/calendar` | SQLite (`%APPDATA%/com.user.deskboard/calendar.sqlite`) |
 | `spotify` | `providers/spotify` | PKCE 로그인, Web API 5초 폴링(위젯 표시 중에만). 위젯이 막 떴을 때·곡이 끝났을 때(`spotify_poll`)는 주기를 기다리지 않는다 — 진행 시간은 백엔드의 `fetched_at` 을 기준으로 **프론트의 `Progress` 안에서만** 1초마다 보간한다 |
-| `settings` | 없음 | 톱니바퀴 아이콘만 있는 정사각형(56×56). 클릭 = 편집 모드(잠금) 토글. 설정 패널 자체는 편집 모드의 편집 바 "⚙ 설정" 버튼이나 위젯 오버레이 ⚙ 로 연다 → `singleton` (항상 1개, 제거 불가, 로드 시 없으면 자동 추가·정사각형이 아니면 기본 크기로 보정) |
+| `settings` | 없음 | **셸 위젯** — `widgets/` 폴더가 아니라 `core/widgetRegistry.ts` 에 정적으로 등록된 유일한 위젯(`src/shell/SettingsLauncher.tsx`; 설정 진입점은 최소 동작이라 코드에 남긴다). 톱니바퀴 아이콘만 있는 정사각형(56×56). 클릭 = 편집 모드(잠금) 토글. 설정 패널 자체는 편집 모드의 편집 바 "⚙ 설정" 버튼이나 위젯 오버레이 ⚙ 로 연다 → `singleton` (항상 1개, 제거 불가, 로드 시 없으면 자동 추가·정사각형이 아니면 기본 크기로 보정) |
 | `wallpaper` | `providers/wallpaper` | 위젯 아님 — 배경화면을 읽어 블러한 스냅샷을 `wallpaper://update` 로 푸시 (카드 뒤 '진짜 반투명' 재료) |
 | `weather` | `providers/weather` | [Open-Meteo](https://open-meteo.com) — **키·가입 불필요**. 위젯이 떠 있을 때만 15분 폴링, 도시 검색은 `weather_search`(지오코딩, 역시 키 불필요) |
 | `notes` | `providers/notes` | 메모·할 일. SQLite (`notes.sqlite`). 목록은 **위젯 인스턴스마다 독립** — 여러 개 띄워 용도별로 나눠 쓴다. 순서는 손잡이(⠿)를 끌어 바꾼다 — 계산은 `notes/reorder.ts`("어느 항목 **앞**에 둘지"로 말해 완료 항목을 숨겨 둔 목록에서도 숨은 것들이 제자리를 지킨다), 저장은 손을 뗄 때 `notes_reorder` 한 번 |
 | `playtime` | `providers/activity` | `playtime` 은 게임(분류 규칙)을 자동으로 세고, 그 밖의 프로그램은 설정의 `extra` 에 등록한 것만 더해 도넛으로 보여준다 — "게임만"과 "앱 전부"로 위젯을 나누면 같은 데이터를 두 번 보게 된다. 앞에 떠 있는 창의 실행 파일 이름만 **2초마다** 확인해 `activity.sqlite` 에 누적 — **창 제목은 저장하지 않는다.** 확인은 자주, 기록은 드물게(30초마다 한 번 flush) — 비싼 것은 Win32 호출이 아니라 SQL 이다. 더하는 값은 **실제로 흐른 시간**(`MAX_TICK` 으로 자름)이고, 전경이 대시보드 자신이거나 읽지 못한 경우(`Foreground::Ours`/`Unknown`)에는 **아무것도 하지 않는다** — 위젯을 클릭했다고 세던 구간을 끊으면 하루가 토막 난다. 입력이 3분 없으면 자리비움으로 보고 세지 않고, 대시보드 자신도 세지 않는다. 분류는 `resources/activity-rules.json` + 사용자 규칙(`rules` 테이블이 우선). **목록에 없는 게임은 기록은 되지만 위젯에서 걸러진다** — 그래서 두 길을 더 뒀다: ① 게임 설치 폴더(`steamapps\common`·`Epic Games`·`Riot Games`·`XboxGames` 등, `rules::looks_like_game_path`)에서 실행된 exe 는 처음 볼 때 `rules` 에 `game` 으로 넣는다(`set_rule_if_absent` — seed 와 사용자 선택이 우선, **경로는 판단에만 쓰고 저장하지 않는다**), ② "셀 프로그램 고르기"의 🎮 버튼(`activity_set_category`). `extra` 는 사람 이름("VS Code")도 받는다(`parseExtras` 가 exe 이름으로 바꾼다) |
 | `github` | `providers/github` | 기여도 잔디(1년)·리뷰 요청·담당 이슈·미확인 알림, 그리고 등록한 저장소(8개)마다 열린 PR/이슈·내 차례인 것·그 저장소 알림·기본 브랜치 CI. **주기마다 호출은 두 번뿐** — GraphQL 하나(`parse::build_query`, 저장소는 `r0:` `r1:` 별칭으로 나란히)와 REST `/notifications` 하나(GraphQL 에 알림 API 가 없다). 저장소를 늘려도 호출 수는 그대로다. classic PAT 에 `repo`·`notifications`·**`read:user`**(잔디) 필요. PAT 는 **DPAPI 로 암호화**해 `github.dat` 에 (`providers/secrets`) |
 | `folder` | `providers/folders` | 디스코드식 바로가기 폴더. 인스턴스당 실제 디렉터리 1개. **`settings.source` 가 두 가지를 가른다** — `managed`(전용 폴더를 `%APPDATA%/com.user.deskboard/folders/<instanceId>` 에 만들어 쓴다. `dir` 은 쓰지 않고 저장도 하지 않는다)와 `link`(사용자가 고른 기존 폴더. **없으면 만들지 않고** 위젯이 이유를 보여준다). 드롭 시 이동/복사, `IShellItemImageFactory` 로 아이콘 추출, `notify` 로 변경 감지 |
+| `scrap` | `providers/scrap` | 📰 주제(프롬프트)별 기사·자료 모음. 백엔드 셋(`backend` 설정, 기본 `auto` = 쓸 수 있는 것을 **api → cli → rss** 순으로 시도, 실패하면 다음으로 넘어가고 이유는 `note` 로 남긴다): ① **Claude API 웹 검색**(`api.rs`, `web_search_20260209` + `web_fetch_20260209`, 기본 `claude-opus-5-5` / 선택 `claude-sonnet-5-5`, 구조화 출력은 거부되면 포맷 없이 재요청하는 폴백, API 키는 DPAPI `anthropic.dat`) ② **Claude Code CLI**(`cli.rs`, `claude -p` + WebSearch/WebFetch, 구독 한도 사용. exe 는 PATH → `~/.local/bin` → Claude 데스크톱 앱의 `%APPDATA%/Claude/claude-code/<버전>/<해시>`. 인증은 **Claude 한도 위젯과 공유하는 앱 내 OAuth 로그인**(`claude.json`, 🔑 → 브라우저로 로그인, 터미널 불필요) — `claude_usage::auth::valid_token` 이 만료 전 갱신한 access token 을 `CLAUDE_CODE_OAUTH_TOKEN` 으로 넘긴다. 갱신은 전역 뮤텍스(`refresh_locked`)로 직렬화(리프레시 토큰이 돌아간다). 로그인이 없으면 CLI 자체 로그인에 맡긴다. `claude setup-token` 은 없앴다) ③ **Google 뉴스 RSS**(`rss.rs`, 무료·요약 없음). **구독 OAuth 토큰으로 API 직접 호출은 안 된다**(실측 429 "Error") — 그래서 구독은 CLI 로만 쓴다. 결과는 인스턴스별 `scrap/<instanceId>.json` 캐시 — 재시작해도 다시 부르지 않는다. 자동 갱신 끔/3h/6h/매일, **프롬프트가 바뀌었으면 자동으로 돌리지 않고** 수동 새로고침을 권한다(비용). 웹 내용은 텍스트로만 렌더 |
 
-새 위젯: [docs/ADDING_A_WIDGET.md](docs/ADDING_A_WIDGET.md) — 폴더 하나 + `registry.ts` 한 줄 (+ Provider).
+새 위젯: [docs/WIDGETS.md](docs/WIDGETS.md) — `widgets/<id>/` 폴더 하나(`widget.json` + `index.tsx`). 재빌드 없이 사용자 폴더에도 둘 수 있다. 셸 설정 파일은 [docs/CONFIG.md](docs/CONFIG.md).
 
 ## 구조
 ```
+widgets/                  위젯 폴더 (내장). <id>/{widget.json, index.tsx, …} — 런타임에 로드, 앱 번들에는 안 들어간다
 src/                      React 프론트
 ├─ core/    theme.css(토큰) · settings.ts(zustand + plugin-store 영속) · ipc.ts(이벤트/커맨드 훅)
-├─ components/  WidgetFrame(카드·이동·크기조절) · Canvas · SettingsPanel(스키마 자동 폼) · Gauge · Sparkline
-└─ widgets/  registry.ts · types.ts · <id>/
+│           widgetRegistry.ts(위젯 목록·정의·config 덮어쓰기) · widgetTypes.ts · config.ts(셸 설정 병합·t())
+│           frameBridge.ts(iframe 메시지 허용 목록) · loader/(compile=sucrase+해시 캐시 · modules=CJS 평가 · host=import 허용 목록)
+├─ sdk/     "deskboard" 모듈 — 위젯이 import 하는 것 전부 (index.ts · context.ts)
+├─ shell/   셸에 박힌 위젯 (SettingsLauncher)
+└─ components/  WidgetHost(정의 조회·오류 격리·command 수명) · FrameWidget(iframe) · WidgetFrame(카드·이동·크기조절) · Canvas · SettingsPanel · Gauge · Sparkline
 src-tauri/src/
-├─ lib.rs        플러그인·프로바이더·커맨드 등록
-├─ window.rs     트레이 메뉴, 작업영역 맞춤, 히트영역 click-through, Win+D 제외
+├─ lib.rs        플러그인·프로바이더·커맨드 등록, `dbw` 스킴 등록, setup 에서 userland::init
+├─ window.rs     트레이 메뉴(문구는 strings.jsonc), 작업영역 맞춤, 히트영역 click-through, Win+D 제외
+├─ userland/     위젯 폴더 스캔(scan)·`dbw` 스킴(scheme)·명령 실행(runner)·저장소(storage)·설정 파일(config/jsonc)·샘플 seed
 └─ providers/    mod.rs(Provider 트레이트 + all()) · <id>/
+src-tauri/resources/userland/   데이터 폴더에 깔리는 샘플·사용자 README·iframe bridge.js
 ```
 
 ## 명령
 ```bash
 npm run tauri dev      # 개발 실행 (Rust 변경 시 자동 재시작, 프론트는 HMR)
 npm run typecheck      # tsc
-npm test               # vitest
+npm test               # vitest (src-tauri/** 제외 — tauri 가 widgets/ 를 target/ 으로 복사한다)
 cd src-tauri && cargo test
 npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/nsis/
 ```
@@ -148,6 +157,35 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
   격자에서 떨어진다). 손잡이 띠는 카드 **안쪽**으로 깐다 — 바깥으로 내밀면 히트 영역
   (`set_hit_regions`, 위젯 사각형 그대로)을 벗어나 클릭이 통과한다.
 
+## 위젯 모듈 시스템
+세부는 [docs/WIDGETS.md](docs/WIDGETS.md) · [docs/CONFIG.md](docs/CONFIG.md). 여기는 건드릴 때 걸리는 것만.
+- **위젯 = 폴더, 폴더명 = id.** 두 루트: 내장(`widgets/`, release 는 `bundle.resources` 로 `$RESOURCE/widgets`, **debug 는 저장소를 직접 읽어 저장 즉시 핫 리로드**)과
+  사용자(`%APPDATA%/com.user.deskboard/widgets/`). 같은 이름이면 사용자 폴더가 내장본을 덮어쓴다. `_`/`.` 접두 = 비활성. 깨진 폴더도 오류와 함께 목록에 남는다.
+- **로더**: 백엔드 `widgets_bundle` → sucrase(지연 로드 청크, 변환 결과는 소스 해시로 IndexedDB 캐시) → `new Function` 으로 CJS 평가, 커스텀 `require`.
+  **위젯이 import 할 수 있는 것**: `react` · `react/jsx-runtime` · `react-dom` · `deskboard`(`src/sdk/index.ts`) · `date-fns` · `date-fns/locale` · 같은 폴더 상대 파일(`.css` 는 `user.css` 앞에 주입, `.json`).
+  그 밖은 throw. 허용 목록은 `core/loader/host.ts`, 늘리면 사용자 README(`resources/userland/widgets/README.md`)도 고친다.
+  `host.ts` 의 모듈 맵은 **처음 쓸 때 만든다** — sdk 가 settings → 레지스트리 → host 로 이어지는 순환 import 안에 있어 평가 시점에 펼치면 초기화 전 바인딩을 만진다.
+- **SDK** `deskboard` = tsconfig `paths` + vite alias(vitest 용)가 `src/sdk/index.ts` 를 가리킨다. 위젯 훅·유틸을 늘릴 때는 여기에 내보내고 WIDGETS.md 표를 고친다.
+- **레지스트리**(`core/widgetRegistry.ts`): 셸 위젯은 settings 하나. `widgets://changed` 를 받아 **지문(version)이 바뀐 위젯만** 다시 불러온다.
+  `config.jsonc` 의 `widgets.<id>` 덮어쓰기(`applyOverrides`)는 정의만 다시 계산한다. **시작 순서: `config.init` + `registry.init` → `settings.load`** (migrate 가 모듈을 필요로 하고, 기본값이 config 를 필요로 한다).
+  두 init 은 throw 하지 않는다 — 위젯을 하나도 못 불러도 셸은 뜬다.
+- **정의가 없는 인스턴스는 `load()` 가 버리지 않는다** → `MissingWidget` 카드(폴더가 돌아오면 같은 설정으로 뜬다, 지우는 건 사용자가 ✕). 옛 `migrate` 분기는 각 위젯 모듈의 `export function migrate` 로 옮겨 갔다.
+- **오류 격리**: `WidgetHost` 가 카드마다 error boundary + `file:line` + "다시 시도". 덮어쓴 사용자 폴더가 깨졌으면 "내장본으로 되돌리기"(`widgets_disable`: 폴더명에 `_`). **무한 루프는 격리할 수 없다.**
+- **command**(`widget.json`): 실행기는 인스턴스별 직렬 + 전역 4개, 명령 문자열은 **스캔한 manifest 에서만**, 설정은 **환경 변수로만**(`DESKBOARD_SETTING_*`). 시작·정지는 **셸이** `WidgetHost` 에서 `invokeInOrder` 로 건다(위젯은 `useCommand` 로 읽기만).
+  함정: ① PowerShell 은 UTF-8 설정을 앞에 붙이지만 **`cmd` 의 내장 `echo` 는 `chcp 65001` 을 무시**하고 ANSI(CP949)로 낸다 — 한글은 `type`/PowerShell. ② `.ps1` 을 가리키면 `-File` 로 돌아 인코딩 설정이 안 붙는다(스크립트에서 직접).
+  ③ **타임아웃은 직계 자식만 죽인다** — 손자 프로세스는 남는다(프로세스 트리 kill 은 TODO, Job Object).
+- **storage**: `useStorage` → `userdata/<instanceId>.json`(256KB, tmp → rename). 평문이므로 비밀값은 넣지 않는다.
+- **HTML(iframe) 위젯**: `sandbox="allow-scripts allow-forms"`(same-origin 없음). 파일은 커스텀 스킴 `dbw` — **`http://dbw.localhost/<id>/<file>`**(Windows). `convertFileSrc` 는 `/` 까지 `%2F` 로 인코딩해 상대 경로가 안 풀리니 쓰지 않는다(`frameBridge.dbwUrl`).
+  `bridge.js` 는 스킴이 `<head>` 앞에 자동 주입. **권한의 전부는 `frameBridge.ts` 의 메서드 화이트리스트 + `PUBLIC_EVENTS`(∩ `subscribe`)** — 늘릴 때는 켜야 도는 provider 이벤트를 열지 않는다. 메시지는 `e.source` 로도 검증.
+  **IME**: 브리지가 `focus{editable}` 을 보내면 `iframe.dataset.editable` 을 세우고 `App.tsx::editable()` 이 이를 입력 요소로 인정한다 — 빠지면 포커스를 돌려줘 한글이 안 쳐진다.
+- **셸 설정 파일**(데이터 폴더, 상세 CONFIG.md): `config.jsonc` / `strings.jsonc` / `user.css` — 감시해서 핫 리로드. `*.sample.*` 은 **매 시작 덮어쓰고 실제 파일은 절대 건드리지 않는다**(seed).
+  병합: 객체 깊은 병합·**배열 교체**·타입 불일치/모르는 키는 기본값+경고(설정 패널 "사용자 설정 파일" 섹션)·깨진 파일은 무시. 트레이 문구는 `set_text` 로만 갱신(메뉴 재생성 없음, `init` 이 `build_tray` **전에** 돈다).
+  폴링 주기는 `userland::config::interval(key, default, min)`(sysmon/weather/github/spotify/claudeUsage) — wallpaper·activity·창 감시 타이밍은 실측값이라 **일부러 코드에 둔다**.
+  **`user.css` 로 앱이 인라인으로 꽂는 토큰(`--accent --radius --surface-alpha --border-k --border-w`)을 덮으려면 `!important`.**
+- **설정 패널**: 위젯 목록을 내장/내 위젯으로 나누고 오류 배지·"폴더 열기"·내장 위젯 "복사해서 고치기"(`widgets_eject`)를 둔다.
+- **테스트**: `src/core/loader/widgets.test.ts` 가 `widgets/*` 전부를 실제 로더로 불러 본다(import 허용 목록·default export·manifest). 새 위젯은 자동으로 걸린다.
+- **보안 트레이드오프**: JSX 위젯은 **앱 전체 권한**으로 돈다(README·패널에 경고). 격리가 필요하면 iframe 위젯. 로드 대상은 두 루트뿐, 네트워크 설치 경로 없음.
+
 ## 규칙
 - 색상·타이포는 `core/theme.css` 의 CSS 변수만 쓴다. 하드코딩 금지.
   - 색: `--accent --text --text-dim --surface --surface-strong --border --ok --warn --danger`
@@ -155,7 +193,7 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
     `--on-light`(밝은 브랜드색 위 글자, 고정) `--on-text`(`--text` 를 배경으로 깔았을 때의 글자색, 팔레트마다 뒤집힘)
   - 타이포: `--fs-value/-title/-sub/-label/-meta/-micro`, `--fw-value/-title/-bold/-label`
   - 모션: `--ease --dur --dur-fast` (`prefers-reduced-motion` 은 theme.css 가 전역으로 처리)
-- 위젯은 서로 import 하지 않는다. `core/`, `components/` 만.
+- 위젯은 서로 import 하지 않는다. **`deskboard` SDK · `react`·`react-dom`·`date-fns` · 자기 폴더 파일만** import 한다 (`core/`·`components/`·`@tauri-apps/*` 직접 import 는 로더가 막는다).
 - 백엔드를 켜고 끄는 토글(`*_set_active` 류)은 **`core/ipc.ts::invokeInOrder`** 로 보낸다.
   `invoke` 는 도착 순서를 보장하지 않는데, StrictMode 가 effect 를 마운트→언마운트→마운트로
   돌리면 `true → false → true` 가 연달아 나간다. `false` 가 마지막에 닿으면 기능이 꺼진 채로
@@ -166,8 +204,10 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
 - 편집 모드(잠금 해제)는 저장하지 않는다. 시작 시 항상 잠김.
 - 설정 저장 위치: `%APPDATA%/com.user.deskboard/`
   - `settings.json` (레이아웃·테마·모니터) · `calendar.sqlite` · `notes.sqlite` · `activity.sqlite`
+  - `widgets/` (사용자 위젯 + 예제 `_example-*`) · `userdata/<instanceId>.json` (위젯 저장소) · `scrap/<instanceId>.json` (스크랩 결과 캐시) · `folders/<instanceId>`
+  - `config.jsonc` · `strings.jsonc` · `user.css` (사용자가 만드는 설정 파일) · `*.sample.*` · `widgets/README.md`·`widget.schema.json` (매 시작 덮어쓰는 샘플·문서)
   - `spotify.json` / `claude.json` — 토큰이 **평문**이다. 새로 쓰는 비밀값은 `providers/secrets`
-    (Windows DPAPI, 현재 계정으로만 복호화)를 거친다: `github.dat`. 기존 둘의 이전은 남은 일.
+    (Windows DPAPI, 현재 계정으로만 복호화)를 거친다: `github.dat` · `anthropic.dat`(스크랩 API 키). 기존 둘의 이전은 남은 일.
   - `pricing.json` / `activity-rules.json` — 있으면 기본값을 덮어쓴다 (선택).
 
 ## 알려진 제약

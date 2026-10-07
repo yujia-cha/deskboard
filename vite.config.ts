@@ -8,6 +8,16 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(() => ({
   plugins: [react()],
 
+  // 위젯 폴더의 테스트(vitest)가 `import … from "deskboard"` 를 풀 수 있게. 앱 번들은 widgets/ 를 import 하지 않는다
+  // — 위젯은 런타임에 백엔드가 읽어 주고 `core/loader` 가 평가한다.
+  test: {
+    // tauri 빌드가 리소스(widgets/)를 target/ 아래로 복사한다 — 그 사본까지 테스트하지 않는다
+    exclude: ["**/node_modules/**", "src-tauri/**"],
+  },
+  resolve: {
+    alias: { deskboard: decodeURIComponent(new URL("./src/sdk/index.ts", import.meta.url).pathname).replace(/^\/([A-Za-z]:)/, "$1") },
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors
@@ -26,7 +36,7 @@ export default defineConfig(() => ({
       : undefined,
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      ignored: ["**/src-tauri/**", "**/widgets/**"],
     },
   },
 }));

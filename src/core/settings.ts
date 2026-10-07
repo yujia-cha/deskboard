@@ -4,8 +4,9 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { enable as enableAutostart, disable as disableAutostart } from "@tauri-apps/plugin-autostart";
 import { clampToBounds } from "./layout";
-import { WIDGETS, widgetById } from "../widgets/registry";
-import { defaultsOf, type WidgetSettings } from "../widgets/types";
+import { allWidgets, widgetById } from "./widgetRegistry";
+import { DEFAULT_CONFIG, useConfig } from "./config";
+import { defaultsOf, type WidgetSettings } from "./widgetTypes";
 
 export type ThemeMode = "translucent" | "solid";
 /** 글자·표면 색 계열. "auto" 는 OS 테마를 따라간다. */
@@ -180,39 +181,27 @@ type R = { x: number; y: number; w: number; h: number };
 export type Rect = R;
 export const overlaps = (a: R, b: R) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
-/** 기존 위젯과 겹치지 않는 첫 자리 (좌→우, 상→하, 40px 스텝). 못 찾으면 (24,24). */
+/** 기존 위젯과 겹치지 않는 첫 자리 (좌→우, 상→하). 못 찾으면 (여백, 여백). 간격·여백은 `config.jsonc` 의 `layout.freeSlot`. */
 export function findFreeSlot(existing: R[], w: number, h: number, bounds = { w: window.innerWidth || 1920, h: window.innerHeight || 1040 }): { x: number; y: number } {
-  const STEP = 40, M = 24;
+  const { step: STEP, margin: M } = useConfig.getState().config.layout.freeSlot;
   for (let y = M; y + h <= bounds.h - M; y += STEP)
     for (let x = M; x + w <= bounds.w - M; x += STEP)
       if (!existing.some((e) => overlaps({ x, y, w, h }, e))) return { x, y };
   return { x: M, y: M };
 }
 
-/** 구버전 저장값 마이그레이션 (사용자가 직접 고르지 않은 옛 기본값만 바꾼다). */
-export function migrate(widgetId: string, saved: WidgetSettings, instanceId = ""): WidgetSettings {
-  const out = { ...saved };
-  // 시계 v1 기본값(dots + long)은 블록 스타일 도입 전 값 → 새 기본으로
-  if (widgetId === "clock" && !("blockColor" in out)) {
-    if (out.digitStyle === "dots") out.digitStyle = "blocks";
-    if (out.dateFormat === "long") out.dateFormat = "mono";
+/**
+ * 옛 저장값을 새 형태로 옮긴다. 위젯마다의 규칙은 그 위젯 모듈의 `export function migrate` 에 있다.
+ * 정의가 아직 없으면(폴더가 사라졌거나 깨짐) 손대지 않는다 — 돌아왔을 때 그대로 쓰게.
+ */
+export function migrateInstance(inst: WidgetInstance): WidgetInstance {
+  const def = widgetById(inst.widgetId);
+  if (!def) return inst;
+  let saved = inst.settings ?? {};
+  if (def.migrate) {
+    try { saved = def.migrate({ ...saved }, inst.id); } catch (e) { console.warn(`${inst.widgetId} migrate`, e); }
   }
-  // 시계 블록 색 옛 하드코딩 기본값("#4fd1c5") → 빈 값(전역/위젯 강조색 사용)
-  if (widgetId === "clock" && out.blockColor === "#4fd1c5") out.blockColor = "";
-  // GitHub v1 의 "CI 상태"(showChecks)는 저장소 줄로 흡수됐다 — 꺼 뒀던 사람이
-  // 갑자기 목록을 보게 되지 않도록 그 뜻을 새 키로 옮긴다.
-  if (widgetId === "github" && "showChecks" in out && !("showRepos" in out)) out.showRepos = out.showChecks;
-  // 폴더 v1 은 경로 칸 하나였다 ("비우면 자동 생성"). 이제 두 모드가 나뉘었으므로 저장된
-  // 경로가 무엇이었는지로 가른다 — 전용 폴더의 경로는 `.../folders/<인스턴스 id>` 로 끝난다.
-  // 그 경우 `dir` 은 지운다. 남겨 두면 다른 PC 에서 남의 계정 경로를 연결하려 든다.
-  if (widgetId === "folder" && !("source" in out)) {
-    const dir = String(out.dir ?? "").trim();
-    const managed = !dir
-      || (!!instanceId && dir.replace(/\\/g, "/").toLowerCase().endsWith(`/folders/${instanceId.toLowerCase()}`));
-    out.source = managed ? "managed" : "link";
-    if (managed) out.dir = "";
-  }
-  return out;
+  return { ...inst, settings: { ...defaultsOf(def.settingsSchema), ...saved } };
 }
 
 /** 설정 위젯은 톱니바퀴만 있는 정사각형이어야 한다 — 옛 저장값(직사각형)을 기본 크기로 보정한다. */
@@ -228,7 +217,7 @@ export function normalizeSettingsSize(instances: WidgetInstance[]): WidgetInstan
 /** singleton 위젯(설정)이 없으면 빈 자리에 하나 추가한다 — 제목줄이 없어 설정 진입점이 반드시 있어야 한다. */
 export function ensureSingletons(instances: WidgetInstance[]): WidgetInstance[] {
   const out = [...instances];
-  for (const def of WIDGETS) {
+  for (const def of allWidgets()) {
     if (!def.singleton || out.some((i) => i.widgetId === def.id)) continue;
     const { w, h } = def.defaultSize;
     const { x, y } = findFreeSlot(out, w, h);
@@ -237,31 +226,23 @@ export function ensureSingletons(instances: WidgetInstance[]): WidgetInstance[] 
   return out;
 }
 
+/** 처음 실행·"기본 레이아웃으로 초기화" 의 배치 — `config.jsonc` 의 `layout.default`. 없는 위젯은 건너뛴다. */
 export function defaultInstances(): WidgetInstance[] {
-  const mk = (widgetId: string, x: number, y: number, w: number, h: number): WidgetInstance =>
-    ({ id: crypto.randomUUID(), widgetId, x, y, w, h, settings: defaultsOf(widgetById(widgetId)?.settingsSchema) });
-  return [
-    mk("settings", 1104, 24, 56, 56),
-    mk("clock", 24, 24, 300, 140),
-    mk("sysmon", 24, 184, 360, 240),
-    mk("claude-usage", 404, 24, 340, 150),
-    mk("spotify", 404, 194, 340, 320),
-    mk("calendar", 764, 24, 320, 400),
-  ];
+  return useConfig.getState().config.layout.default
+    .filter((slot) => widgetById(slot.widget))
+    .map((slot) => ({
+      id: crypto.randomUUID(), widgetId: slot.widget, x: slot.x, y: slot.y, w: slot.w, h: slot.h,
+      settings: defaultsOf(widgetById(slot.widget)?.settingsSchema),
+    }));
+}
+
+/** 저장값이 없는 항목의 기본값 — 코드의 기본값 위에 `config.jsonc` 의 `defaults` 를 얹는다. */
+function defaultPersisted(): Omit<Persisted, "instances"> {
+  return { ...useConfig.getState().config.defaults, canvasMonitor: null, autostart: true };
 }
 
 export const useSettings = create<State>((set, get) => ({
-  themeMode: "translucent",
-  palette: "dark",
-  cardStyle: "glass",
-  surfaceOpacity: 62,
-  blurStrength: 3,
-  cornerRadius: 16,
-  borderStrength: 65,
-  borderWidth: 1,
-  accent: "#7c9cff",
-  gridSnap: 8,
-  autoScale: true,
+  ...DEFAULT_CONFIG.defaults,
   canvasMonitor: null,
   autostart: true,
   instances: [],
@@ -277,16 +258,13 @@ export const useSettings = create<State>((set, get) => ({
   async load() {
     const saved = await store.get<Partial<Persisted>>(KEY);
     const s: Persisted = {
-      themeMode: "translucent", palette: "dark", cardStyle: "glass",
-      surfaceOpacity: 62, blurStrength: 3, cornerRadius: 16, borderStrength: 65, borderWidth: 1,
-      accent: "#7c9cff", gridSnap: 8, autoScale: true, canvasMonitor: null, autostart: true,
+      ...defaultPersisted(),
       ...saved,
       instances: saved?.instances ?? defaultInstances(),
     };
-    // 레지스트리에서 사라진 위젯은 버리고, 스키마 기본값은 채운다.
-    const known = s.instances
-      .filter((i) => widgetById(i.widgetId))
-      .map((i) => ({ ...i, settings: { ...defaultsOf(widgetById(i.widgetId)!.settingsSchema), ...migrate(i.widgetId, i.settings, i.id) } }));
+    // 정의를 못 찾은 위젯도 **버리지 않는다.** 사용자 위젯 폴더를 잠깐 옮겼거나 코드가 깨졌을 수 있다 —
+    // 화면에는 "찾을 수 없음" 카드로 남고, 폴더가 돌아오면 같은 설정으로 다시 뜬다. 지우는 건 사용자가 ✕ 로.
+    const known = s.instances.map(migrateInstance);
     const singletoned = ensureSingletons(known);
     const normalized = normalizeSettingsSize(singletoned);
     // 다른 해상도·배율·모니터에서 저장된 배치는 화면 밖에 남을 수 있다 — 보이는 자리로 접는다.
@@ -301,7 +279,7 @@ export const useSettings = create<State>((set, get) => ({
     invoke("set_canvas_monitor", { name: s.canvasMonitor }).catch(console.warn);
     // 자동 시작 등록은 백엔드(autostart.rs::sync)가 시작 시 `autostart` 값에 맞춰 처리한다.
     const resized = normalized.some((i, idx) => i.w !== singletoned[idx].w || i.h !== singletoned[idx].h);
-    if (!saved || s.instances.length !== known.length || resized) persist(get);
+    if (!saved || resized) persist(get);
   },
   setThemeMode(themeMode) { set({ themeMode }); applyTheme(get()); persist(get); },
   toggleTheme() { get().setThemeMode(get().themeMode === "solid" ? "translucent" : "solid"); },
@@ -348,6 +326,8 @@ export const useSettings = create<State>((set, get) => ({
       selection: get().selection.filter((id) => id !== instanceId),
     });
     persist(get);
+    // 인스턴스 저장소(`useStorage`)는 그 인스턴스와 함께 사라진다. 실행 중인 command 는 호스트가 언마운트하며 끈다.
+    invoke("widget_storage_delete", { instanceId }).catch(() => {});
   },
   resetLayout() {
     set({ instances: defaultInstances(), selected: null, selection: [] });
@@ -408,5 +388,6 @@ export function contentScale(inst: WidgetInstance, autoScale: boolean): number {
   const def = widgetById(inst.widgetId);
   if (!autoScale || !def) return 1;
   const s = Math.min(inst.w / def.defaultSize.w, inst.h / def.defaultSize.h);
-  return Math.max(0.6, Math.min(2.5, Math.round(s * 100) / 100));
+  const { min, max } = useConfig.getState().config.layout.contentScale;
+  return Math.max(min, Math.min(max, Math.round(s * 100) / 100));
 }

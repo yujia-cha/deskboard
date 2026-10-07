@@ -14,6 +14,7 @@ pub mod folders;
 pub mod github;
 pub mod notes;
 pub mod oauth;
+pub mod scrap;
 pub mod secrets;
 pub mod spotify;
 pub mod sysmon;
@@ -59,5 +60,6 @@ pub fn all() -> Vec<Box<dyn Provider>> {
         Box::new(notes::NotesProvider),
         Box::new(activity::ActivityProvider),
         Box::new(github::GithubProvider),
+        Box::new(scrap::ScrapProvider),
     ]
 }

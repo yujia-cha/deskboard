@@ -1,0 +1,14 @@
+{
+  "$schema": "../widget.schema.json",
+  "title": "CPU (HTML 예제)",
+  "icon": "🧪",
+  "description": "HTML 위젯 예제 — 시스템 이벤트를 받아 그리고, 최고값을 저장소에 기억한다",
+  "entry": "index.html",
+  "defaultSize": { "w": 220, "h": 120 },
+  "minSize": { "w": 140, "h": 80 },
+  "subscribe": ["sysmon://update"],
+  "settingsSchema": [
+    { "key": "label", "label": "제목", "type": "text", "default": "CPU" },
+    { "key": "warnAt", "label": "경고 기준 (%)", "type": "number", "default": 80, "min": 10, "max": 100, "step": 5 }
+  ]
+}

@@ -1,7 +1,7 @@
 //! Claude Code 로컬 사용량 — 트랜스크립트 JSONL 을 파싱해 토큰/비용을 집계하고,
 //! 파일 변경을 감시해 `claude_usage://update` 로 푸시한다.
 
-mod auth;
+pub mod auth;
 mod limits;
 mod parser;
 mod pricing;
@@ -197,7 +197,10 @@ async fn limits_loop(app: AppHandle, refresh: Arc<Notify>) {
             }
         }
         let _ = app.emit("claude_usage://limits", &to_emit);
-        let wait = if rate_limited { 300 } else if l.ok { 120 } else if !l.logged_in { 600 } else { 180 };
+        let wait = if rate_limited { 300 } else if l.ok {
+            // config.jsonc 의 `intervals.claudeUsage` (초, 최소 60)
+            crate::userland::config::interval("claudeUsage", std::time::Duration::from_secs(120), std::time::Duration::from_secs(60)).as_secs()
+        } else if !l.logged_in { 600 } else { 180 };
         tokio::select! {
             _ = tokio::time::sleep(std::time::Duration::from_secs(wait)) => {}
             _ = refresh.notified() => {

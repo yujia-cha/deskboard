@@ -1,0 +1,68 @@
+{
+  "$schema": "../widget.schema.json",
+  "title": "스크랩",
+  "icon": "📰",
+  "description": "정해 둔 주제의 기사·자료를 Claude 가 웹에서 찾아 모아 보여 줍니다",
+  "entry": "index.tsx",
+  "provider": "scrap",
+  "defaultSize": { "w": 340, "h": 360 },
+  "minSize": { "w": 220, "h": 160 },
+  "settingsSchema": [
+    { "key": "backend", "label": "가져오는 곳", "type": "select", "default": "auto",
+      "options": [
+        { "value": "auto", "label": "자동 (API 키 → Claude Code → RSS)" },
+        { "value": "api", "label": "Claude API 키" },
+        { "value": "cli", "label": "Claude Code (구독)" },
+        { "value": "rss", "label": "RSS (무료, 요약 없음)" }
+      ] },
+    { "key": "backendNote", "type": "note",
+      "label": "API 키: 웹 검색·요약, 그 계정에 과금. Claude Code: 이 PC 의 Claude Code 로 구독 한도를 써서 같은 일을 함 (🔑 에서 브라우저로 로그인).\nRSS: Google 뉴스 검색 결과만 — 요약이 없고 무료. 자동은 쓸 수 있는 것부터 차례로 시도하고 실패하면 다음으로 넘어갑니다.\n아래 모델·생각하는 정도·최대 검색 횟수는 API 키·Claude Code 에만 적용됩니다." },
+    { "key": "prompt", "label": "주제·조건", "type": "text", "default": "", "placeholder": "예: Rust 생태계 새 소식, 국내 AI 정책 동향" },
+    { "key": "count", "label": "가져올 개수", "type": "number", "default": 8, "min": 3, "max": 15, "step": 1 },
+    { "key": "recency", "label": "기간", "type": "select", "default": "week",
+      "options": [
+        { "value": "day", "label": "최근 24시간" },
+        { "value": "week", "label": "최근 1주" },
+        { "value": "month", "label": "최근 1달" },
+        { "value": "any", "label": "제한 없음" }
+      ] },
+    { "key": "language", "label": "요약 언어", "type": "select", "default": "ko",
+      "options": [
+        { "value": "ko", "label": "한국어" },
+        { "value": "en", "label": "English" }
+      ] },
+    { "key": "refresh", "label": "자동 갱신", "type": "select", "default": "daily",
+      "options": [
+        { "value": "off", "label": "끔 (새로고침 버튼으로만)" },
+        { "value": "3h", "label": "3시간마다" },
+        { "value": "6h", "label": "6시간마다" },
+        { "value": "daily", "label": "매일 한 번" }
+      ] },
+    { "key": "dailyHour", "label": "매일 몇 시에 (0~23)", "type": "number", "default": 8, "min": 0, "max": 23, "step": 1,
+      "showIf": { "key": "refresh", "equals": "daily" } },
+    { "key": "costNote", "type": "note",
+      "label": "갱신할 때마다 웹 검색과 모델 호출 비용이 듭니다 (API 키 사용 시 그 계정에 과금, Claude Code 는 구독 한도).\n결과는 저장해 두어 다시 시작해도 다시 부르지 않습니다." },
+    { "key": "model", "label": "모델", "type": "select", "default": "claude-opus-5-5",
+      "options": [
+        { "value": "claude-opus-5-5", "label": "Claude Opus 5.5 (정확)" },
+        { "value": "claude-sonnet-5-5", "label": "Claude Sonnet 5.5 (저렴·빠름)" }
+      ] },
+    { "key": "effort", "label": "생각하는 정도", "type": "select", "default": "medium",
+      "options": [
+        { "value": "low", "label": "낮음 (빠르고 저렴)" },
+        { "value": "medium", "label": "보통" },
+        { "value": "high", "label": "높음 (꼼꼼, 비쌈)" }
+      ] },
+    { "key": "maxSearches", "label": "최대 검색 횟수", "type": "number", "default": 5, "min": 1, "max": 10, "step": 1 },
+    { "key": "domainMode", "label": "사이트 제한", "type": "select", "default": "none",
+      "options": [
+        { "value": "none", "label": "없음" },
+        { "value": "allow", "label": "이 사이트들에서만" },
+        { "value": "block", "label": "이 사이트들은 빼고" }
+      ] },
+    { "key": "domains", "label": "사이트 (쉼표로 구분)", "type": "text", "default": "", "placeholder": "news.ycombinator.com, zdnet.co.kr",
+      "showIf": { "key": "domainMode", "equals": "allow" } },
+    { "key": "blockedDomains", "label": "뺄 사이트 (쉼표로 구분)", "type": "text", "default": "", "placeholder": "example.com",
+      "showIf": { "key": "domainMode", "equals": "block" } }
+  ]
+}

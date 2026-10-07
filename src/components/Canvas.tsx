@@ -1,8 +1,8 @@
 import { useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { useSettings } from "../core/settings";
 import { hitsInRect, marqueeRect, type Box } from "../core/layout";
-import { widgetById } from "../widgets/registry";
 import { WidgetFrame } from "./WidgetFrame";
+import { WidgetHost } from "./WidgetHost";
 
 /** 클릭과 선택 드래그를 가르는 거리(px). 이보다 짧으면 "빈 곳 클릭" = 선택 해제. */
 const DRAG_SLOP = 4;
@@ -64,16 +64,11 @@ export function Canvas() {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
-      {instances.map((inst) => {
-        const def = widgetById(inst.widgetId);
-        if (!def) return null;
-        const C = def.component;
-        return (
-          <WidgetFrame key={inst.id} inst={inst}>
-            {(inner) => <C instanceId={inst.id} settings={inst.settings} size={inner} editing={!locked} />}
-          </WidgetFrame>
-        );
-      })}
+      {instances.map((inst) => (
+        <WidgetFrame key={inst.id} inst={inst}>
+          {(inner) => <WidgetHost inst={inst} size={inner} editing={!locked} />}
+        </WidgetFrame>
+      ))}
       {band && <div className="marquee" style={{ left: band.x, top: band.y, width: band.w, height: band.h }} />}
     </div>
   );

@@ -47,6 +47,8 @@ pub enum RuleError {
     NoEmits,
     #[error("잘못된 단계입니다")]
     BadStep,
+    #[error("상자는 먼저 열어야 합니다")]
+    BoxClosed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -412,7 +414,7 @@ pub fn tap(
     let pos = decode(game, idx)?;
     if let Pos::Board(i) = pos {
         if matches!(game.board[i], Cell::Box { .. }) {
-            return Err(RuleError::NotMovable);
+            return Err(RuleError::BoxClosed);
         }
     }
     match free_item(game, pos) {
@@ -1013,7 +1015,7 @@ pub mod tests {
         g.board[at(0, 0)] = boxed("clean", 1);
         g.board[at(1, 0)] = free("clean", 1);
         let mut fx = Fx::default();
-        assert_eq!(tap(&mut g, &c, &e, at(0, 0), &mut rng(), &mut fx), Err(RuleError::NotMovable));
+        assert_eq!(tap(&mut g, &c, &e, at(0, 0), &mut rng(), &mut fx), Err(RuleError::BoxClosed));
         tap(&mut g, &c, &e, at(1, 0), &mut rng(), &mut fx).unwrap(); // 일반 아이템은 아무 일 없음
         assert_eq!(g.energy, 3);
         tap(&mut g, &c, &e, at(3, 4), &mut rng(), &mut fx).unwrap();

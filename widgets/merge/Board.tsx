@@ -101,7 +101,8 @@ export function Board({ view, content, layout, editing, act, reload, hint }: Pro
     if (!item) return;
     const st = stateAt(i);
     if (st === "box") { setConfirm({ kind: "box", cell: i }); return; }
-    if (i < 100 && st === "free" && (item.kind === "gift" || isGenerator(content, item))) act("merge_tap", { cell: i });
+    // 🎁 는 보관함에서도 꺼낼 수 있다(백엔드 pop_gift 가 가운데 근처 빈 칸에 놓는다). 생산기는 보드 위에서만.
+    if (st === "free" && (item.kind === "gift" || (i < 100 && isGenerator(content, item)))) act("merge_tap", { cell: i });
   };
 
   const sel = selected !== null ? itemAt(selected) : null;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { call, invokeInOrder, useEvent, useWidget } from "deskboard";
 import type { MergeContent, MergeView } from "./types";
 import { Board } from "./Board";
@@ -20,6 +20,10 @@ export function Merge() {
   const [hint, setHint] = useState(false);
   const [notice, setNotice] = useState(false);
   const flashTimer = useRef<number | undefined>(undefined);
+  // 카드 여백(--wpad)을 뺀 실제 내용 상자. `size` 는 카드 크기라 그대로 쓰면 격자가 넘쳐 WidgetFrame 이 배율을 줄인다.
+  // clientWidth/Height 는 CSS zoom 아래서도 배율 전 px 다.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState<{ w: number; h: number } | null>(null);
 
   const reload = useCallback(
     () =>
@@ -67,7 +71,18 @@ export function Merge() {
   );
 
   const left = useRegenCountdown(view, reload);
-  const layout = useMemo(() => computeLayout(size), [size.w, size.h]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ready = view !== null;
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const read = () => setBox({ w: el.clientWidth, h: el.clientHeight });
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ready]);
+  const inner = box && box.w > 0 && box.h > 0 ? box : size;
+  const layout = useMemo(() => computeLayout(inner), [inner.w, inner.h]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setKeyClicker = async (on: boolean) => {
     await invokeInOrder("merge_set_key_clicker", { on });
@@ -99,7 +114,7 @@ export function Merge() {
   }
 
   return (
-    <div className="merge">
+    <div ref={rootRef} className="merge">
       <div className="merge-head" style={{ height: HEADER_H }}>
         <span title={view.nextLevelAt !== null ? `다음 레벨까지 ⭐${view.nextLevelAt}` : "최고 레벨"}>🍀{view.level}</span>
         <span className="merge-energy-wrap">

@@ -47,8 +47,11 @@ pub trait KeySource: Send {
 pub trait KeyHandle: Send {}
 
 /// 아무것도 세지 않는 원천 (비 Windows).
+/// Windows 에서는 `RawInputSource` 가 쓰이므로 만들어지지 않는다.
+#[cfg_attr(target_os = "windows", allow(dead_code))]
 pub struct NullSource;
 
+#[cfg_attr(target_os = "windows", allow(dead_code))]
 struct NullHandle;
 impl KeyHandle for NullHandle {}
 
@@ -154,6 +157,7 @@ impl KeyClicker {
     }
 
     /// 지금 바로 정산한다 (테스트·종료용). 넘긴 수를 돌려준다.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn flush(&self) -> u64 {
         self.shared.settle()
     }

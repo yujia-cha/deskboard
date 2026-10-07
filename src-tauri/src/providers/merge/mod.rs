@@ -533,7 +533,7 @@ mod tests {
         let before = i.game.clone();
         let ledger = i.store.ledger_sum().unwrap();
         assert_eq!(i.move_item(at(0, 0), at(1, 1)).unwrap_err(), "그 칸은 옮길 수 없습니다");
-        assert_eq!(i.tap(at(0, 0)).unwrap_err(), "그 칸은 옮길 수 없습니다", "상자를 누르면 오류 — 프론트가 확인 뒤 open_box");
+        assert_eq!(i.tap(at(0, 0)).unwrap_err(), "상자는 먼저 열어야 합니다", "상자를 누르면 오류 — 프론트가 확인 뒤 open_box");
         assert_eq!(i.sell(at(2, 4)).unwrap_err(), "생산기는 팔 수 없습니다");
         assert_eq!(i.deliver(0).unwrap_err(), "주문을 채울 아이템이 없습니다");
         assert_eq!(i.deliver(9).unwrap_err(), "잘못된 칸 번호입니다");

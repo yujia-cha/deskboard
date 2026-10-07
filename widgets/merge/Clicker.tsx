@@ -21,18 +21,29 @@ export function Clicker({ view, content, reload, hint }: Props) {
   const timer = useRef<number | undefined>(undefined);
   const [, bump] = useState(0);
   // 보냈지만 아직 view 에 반영되지 않은 클릭 — 링이 되감기지 않게 더해서 보여 준다.
+  // 보내는 동안은 보낼 때의 `clickerRem`(base)을 기준으로 그린다 — reload 가 먼저 닿고 `finally` 가 나중에 돌면
+  // 새 rem + inflight 로 한 프레임 겹쳐 세어 링이 튀기 때문이다.
   const [inflight, setInflight] = useState(0);
+  const base = useRef(0);
+  const remRef = useRef(view.clickerRem);
+  remRef.current = view.clickerRem;
+  const inflightRef = useRef(0);
 
   const flush = useCallback(() => {
     window.clearTimeout(timer.current);
     const n = pending.current;
     if (n <= 0) return;
     pending.current = 0;
+    if (inflightRef.current === 0) base.current = remRef.current;
+    inflightRef.current += n;
     setInflight((v) => v + n);
     // invokeInOrder 는 실패해도 undefined 로 끝난다 — 어느 쪽이든 다시 읽어 바로잡는다.
     invokeInOrder("merge_clicker_add", { n })
       .then(() => reload())
-      .finally(() => setInflight((v) => Math.max(0, v - n)));
+      .finally(() => {
+        inflightRef.current = Math.max(0, inflightRef.current - n);
+        setInflight((v) => Math.max(0, v - n));
+      });
   }, [reload]);
 
   // 떠날 때 모아 둔 클릭을 보낸다.
@@ -48,7 +59,7 @@ export function Clicker({ view, content, reload, hint }: Props) {
     else timer.current = window.setTimeout(flush, 1000);
   };
 
-  const shown = (view.clickerRem + inflight + pending.current) % need;
+  const shown = ((inflight > 0 ? base.current : view.clickerRem) + inflight + pending.current) % need;
   const skin = content?.skins.clicker ?? { emoji: "🐹" };
 
   return (

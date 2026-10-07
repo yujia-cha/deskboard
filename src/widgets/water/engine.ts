@@ -48,7 +48,7 @@ const WHEEL_STEP = Math.PI / 12;
 const WHEEL_PITCH = Math.PI / 36;
 /** 등각 그림이 카드에서 차지하는 비율 */
 const ISO_FIT = 0.92;
-const DEBUG_OVERLAY = true;
+const DEBUG_OVERLAY = false;
 
 type Drag =
   | { mode: "move"; id: number; offX: number; offY: number }

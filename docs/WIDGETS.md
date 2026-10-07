@@ -57,7 +57,7 @@ export function Hello({ settings, size }: WidgetProps) {
 ```
 
 - `entry` 를 생략하면 `index.tsx → .jsx → .ts → .js → .html` 중 처음 있는 것. 확장자가 `.html` 이면 iframe 위젯.
-- 설정 필드: `boolean` · `number`(min/max/step) · `text` · `select` · `path`(`pick: image|directory`) · `note`(값 없는 설명 줄),
+- 설정 필드: `boolean` · `number`(min/max/step) · `range`(min/max/step 필수, `unit` 선택 — 값이 오른쪽에 붙은 슬라이더, 움직이는 즉시 저장·반영되므로 물리 값처럼 "만지며 맞추는" 값에) · `text` · `select` · `path`(`pick: image|directory`) · `note`(값 없는 설명 줄),
   공통 `showIf: {key, equals}`. **잘못된 줄은 그 줄만 버리고 경고**한다 — 한 줄 틀렸다고 위젯 전체를 죽이지 않는다.
 - `singleton` 은 쓸 수 없다 (셸의 설정 위젯 전용).
 - **import 할 수 있는 것은 아래뿐이다** (그 밖은 로더가 throw):

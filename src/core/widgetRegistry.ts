@@ -105,7 +105,7 @@ export function applyOverrides(def: WidgetDefinition, o: WidgetOverride | undefi
         if (!f || f.type === "note") { warnings.push(`${where}.settings.${key}: 이 위젯에 없는 설정입니다`); continue; }
         const ok =
           (f.type === "boolean" && typeof value === "boolean") ||
-          (f.type === "number" && typeof value === "number" && Number.isFinite(value)) ||
+          ((f.type === "number" || f.type === "range") && typeof value === "number" && Number.isFinite(value)) ||
           ((f.type === "text" || f.type === "path") && typeof value === "string") ||
           (f.type === "select" && f.options.some((opt) => opt.value === value));
         if (!ok) { warnings.push(`${where}.settings.${key}: 값의 형식이 맞지 않습니다`); continue; }

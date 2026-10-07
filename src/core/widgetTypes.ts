@@ -17,6 +17,8 @@ export type SettingField = FieldBase &
   (
     | { type: "boolean"; default: boolean }
     | { type: "number"; default: number; min?: number; max?: number; step?: number }
+    /** 슬라이더. 움직이는 즉시 저장·반영되므로 물리 값처럼 "만지며 맞추는" 값에 쓴다. */
+    | { type: "range"; default: number; min: number; max: number; step: number; unit?: string }
     | { type: "text"; default: string; placeholder?: string }
     | { type: "select"; default: string; options: { value: string; label: string }[] }
     | { type: "path"; pick: "image" | "directory"; default: string }
@@ -102,6 +104,14 @@ export function validateSchema(raw: unknown): { schema: SettingField[]; warnings
       case "note": break;
       case "boolean": if (typeof f.default !== "boolean") return bad("default 는 true/false 여야 합니다"); break;
       case "number": if (typeof f.default !== "number") return bad("default 는 숫자여야 합니다"); break;
+      case "range": {
+        const n = (v: unknown) => typeof v === "number" && Number.isFinite(v);
+        if (!n(f.default) || !n(f.min) || !n(f.max) || !n(f.step)) return bad("default·min·max·step 이 모두 숫자여야 합니다");
+        const [d, lo, hi] = [f.default as number, f.min as number, f.max as number];
+        if (lo > hi || d < lo || d > hi) return bad("default 는 min 과 max 사이여야 합니다");
+        if (f.unit !== undefined && typeof f.unit !== "string") return bad("unit 은 문자열이어야 합니다");
+        break;
+      }
       case "text": if (typeof f.default !== "string") return bad("default 는 문자열이어야 합니다"); break;
       case "path":
         if (typeof f.default !== "string") return bad("default 는 문자열이어야 합니다");

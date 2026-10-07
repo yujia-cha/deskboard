@@ -88,7 +88,7 @@
       "properties": {
         "key": { "type": "string", "description": "설정 값의 이름." },
         "label": { "type": "string", "description": "패널에 보이는 이름 (note 는 본문)." },
-        "type": { "type": "string", "enum": ["boolean", "number", "text", "select", "path", "note"] },
+        "type": { "type": "string", "enum": ["boolean", "number", "range", "text", "select", "path", "note"] },
         "showIf": {
           "type": "object",
           "description": "같은 위젯의 다른 설정값이 equals 와 같을 때만 이 줄을 보인다.",
@@ -115,6 +115,17 @@
             "step": { "type": "number" }
           },
           "required": ["default"]
+        },
+        {
+          "properties": {
+            "type": { "const": "range" },
+            "default": { "type": "number" },
+            "min": { "type": "number" },
+            "max": { "type": "number" },
+            "step": { "type": "number" },
+            "unit": { "type": "string", "description": "값 뒤에 붙는 단위 (예: \" m/s²\", \"%\")." }
+          },
+          "required": ["default", "min", "max", "step"]
         },
         {
           "properties": {

@@ -204,6 +204,9 @@ pub fn set_hit_regions(state: tauri::State<'_, HitRegions>, rects: Vec<HitRect>,
         s.rects = rects;
         s.enabled = enabled;
     }
+    // 히트 영역이 켜져 있다 = 잠금 상태이고 설정 패널도 닫혀 있다. 이때만 z 상승을 막는다.
+    #[cfg(target_os = "windows")]
+    HOLD_Z.store(enabled, Ordering::Relaxed);
 }
 
 #[cfg(target_os = "windows")]
@@ -926,11 +929,15 @@ fn enforce_z_order(app: &AppHandle) {
     // 없으면 null = HWND_TOP 이 되어 일반 밴드의 맨 위로 간다 — 역시 바탕화면 위다.
     // SAFETY: z.desktop 은 방금 열거에서 얻은 살아 있는 창이다.
     let above_desktop = unsafe { GetWindow(z.desktop as _, GW_HWNDPREV) };
+    // 우리가 옮기는 것이니 `hold_z_proc` 가 막지 않게 표시한다. 다른 스레드의 창에 대한
+    // `SetWindowPos` 는 `WM_WINDOWPOSCHANGING` 을 동기로 보내므로 호출 동안만 켜 두면 된다.
+    OWN_Z_MOVE.store(true, Ordering::Relaxed);
     // SAFETY: me 는 살아 있는 창이고, above_desktop 은 유효한 핸들이거나 null(HWND_TOP)이다.
     unsafe {
         SetWindowPos(me as _, above_desktop, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
     };
+    OWN_Z_MOVE.store(false, Ordering::Relaxed);
     // 고쳤는데도 그대로면 누군가 같은 자리를 다투고 있다. 두 번 연속이면 버스트를 접는다.
     if invariant_broken(me) {
         INEFFECTIVE.fetch_add(1, Ordering::Relaxed);
@@ -979,6 +986,68 @@ fn cloaked(h: isize) -> u32 {
     v
 }
 
+
+// --- 클릭해도 앱 위로 올라오지 않기 -------------------------------------------------
+//
+// 창을 클릭하면 Windows 는 활성화와 함께 그 창을 z 맨 위로 올린다. 그래서 위젯을 누르는 순간
+// 대시보드가 겹친 앱들 위로 튀어 올랐다가, 포커스 반환(250ms)과 불변식 교정이 다시 내릴 때까지
+// 깜빡였다. `enforce_z_order` 는 전경이 우리인 동안 손대지 않으므로 그 사이를 막을 수 없다.
+//
+// 올리는 일은 결국 우리 창에 `WM_WINDOWPOSCHANGING` 으로 온다. 거기서 `SWP_NOZORDER` 를 붙이면
+// **활성화·포커스·IME 는 그대로 일어나고 올라가는 것만 빠진다** — 탈락한 시도들
+// (`WS_EX_NOACTIVATE`, 소유자 지정)이 깨뜨린 것이 바로 그 활성화 경로였다.
+//
+// 막는 것은 잠금 상태(히트 영역 켜짐)일 때뿐이다. 편집 모드·설정 패널에서는 지금처럼 올라온다.
+// 우리가 직접 옮기는 호출(`enforce_z_order`)은 `OWN_Z_MOVE` 로 표시해 통과시킨다.
+
+/// 잠금 상태라 활성화에 딸려 오는 z 상승을 막는다 (`set_hit_regions` 의 `enabled`).
+#[cfg(target_os = "windows")]
+static HOLD_Z: AtomicBool = AtomicBool::new(false);
+/// 지금 z 를 옮기는 것은 우리다 (`enforce_z_order`) — 막지 않는다.
+#[cfg(target_os = "windows")]
+static OWN_Z_MOVE: AtomicBool = AtomicBool::new(false);
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn hold_z_proc(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    msg: u32,
+    wparam: windows_sys::Win32::Foundation::WPARAM,
+    lparam: windows_sys::Win32::Foundation::LPARAM,
+    _id: usize,
+    _data: usize,
+) -> windows_sys::Win32::Foundation::LRESULT {
+    use windows_sys::Win32::UI::Shell::DefSubclassProc;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SWP_NOZORDER, WINDOWPOS, WM_WINDOWPOSCHANGING,
+    };
+    if msg == WM_WINDOWPOSCHANGING
+        && lparam != 0
+        && HOLD_Z.load(Ordering::Relaxed)
+        && !OWN_Z_MOVE.load(Ordering::Relaxed)
+    {
+        // SAFETY: WM_WINDOWPOSCHANGING 의 lParam 은 고쳐 써도 되는 WINDOWPOS 포인터다.
+        let wp = unsafe { &mut *(lparam as *mut WINDOWPOS) };
+        wp.flags |= SWP_NOZORDER;
+    }
+    // SAFETY: 서브클래스 프로시저 안에서 다음 프로시저로 넘기는 정해진 호출이다.
+    unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
+}
+
+/// 시작 시 한 번. 창을 만든 스레드에서 불러야 한다 (`SetWindowSubclass` 의 제약, `lib.rs` 의 setup).
+#[cfg(target_os = "windows")]
+pub fn hold_z_on_activate(app: &AppHandle) {
+    use windows_sys::Win32::UI::Shell::SetWindowSubclass;
+    let Some(me) = main_hwnd(app) else { return };
+    // 다른 서브클래스(tao)와 겹치지 않을 아무 id. 같은 (proc, id) 로 다시 부르면 덮어쓸 뿐이다.
+    const ID: usize = 0x64_6b_62; // "dkb"
+    // SAFETY: me 는 살아 있는 메인 창이고, 프로시저는 정적 함수라 창보다 오래 산다.
+    if unsafe { SetWindowSubclass(me as _, Some(hold_z_proc), ID, 0) } == 0 {
+        log::warn!("z 상승 차단 서브클래스를 걸지 못했습니다 — 클릭 시 잠깐 앱 위로 올라올 수 있습니다");
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn hold_z_on_activate(_app: &AppHandle) {}
 
 /// 메인 창 핸들 — 훅 콜백은 `AppHandle` 을 받을 수 없어 여기서 읽는다.
 #[cfg(target_os = "windows")]

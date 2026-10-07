@@ -109,7 +109,10 @@ npm run tauri build    # NSIS 설치 파일 → src-tauri/target/release/bundle/
   - 같은 자리를 노리는 다른 바탕화면 위젯 앱(Rainmeter 등)과 무한히 싸우지 않도록, 고쳐도
     소용없는 일이 두 번 연속이면 버스트를 켜지 않는다 (`INEFFECTIVE`).
   - **전경이 우리일 때는 내리지 않는다** — 위젯 클릭으로 얻은 포커스와 싸우지 않기 위해서다.
-    그동안 잠깐 앱 위로 올라올 수 있다(허용). 아예 못 올라오게 하는 건 남은 일.
+    애초에 올라오지도 않는다: 클릭 활성화가 창을 z 맨 위로 올리는 일은 우리 창의
+    `WM_WINDOWPOSCHANGING` 으로 오므로, 거기서 `SWP_NOZORDER` 를 붙인다 (`window.rs::hold_z_proc`,
+    `SetWindowSubclass`). **활성화·포커스·IME 는 그대로이고 올라가는 것만 빠진다.** 잠금 상태
+    (히트 영역 켜짐)에서만 막고, 우리 자신의 교정(`enforce_z_order`)은 `OWN_Z_MOVE` 로 통과시킨다.
   탈락한 시도들은 `window.rs` 의 "Win+D 에서 살아남기" 머리말에 실측과 함께 남겨 두었다 —
   `WS_MINIMIZEBOX` 제거(이미 적용돼 있어 무의미) · topmost(이 창에서 `WS_EX_TOPMOST` 가 안 켜짐) ·
   `SetParent`(자식 창은 DWM 알파 합성을 못 받아 아이콘이 사라짐) ·

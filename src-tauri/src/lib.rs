@@ -47,6 +47,8 @@ pub fn run() {
             window::start_hit_test(app.handle().clone());
             // 전경이 우리에게 잘못 넘어오는 순간을 잡는다 (메시지 루프가 있는 이 스레드에서).
             window::watch_foreground(app.handle());
+            // 위젯을 눌러도(활성화) 대시보드가 앱들 위로 올라오지 않게 한다 (역시 이 스레드에서).
+            window::hold_z_on_activate(app.handle());
             autostart::sync(app.handle());
 
             for provider in providers::all() {

@@ -12,6 +12,7 @@ pub mod calendar;
 pub mod claude_usage;
 pub mod folders;
 pub mod github;
+pub mod merge;
 pub mod notes;
 pub mod oauth;
 pub mod scrap;
@@ -61,5 +62,6 @@ pub fn all() -> Vec<Box<dyn Provider>> {
         Box::new(activity::ActivityProvider),
         Box::new(github::GithubProvider),
         Box::new(scrap::ScrapProvider),
+        Box::new(merge::MergeProvider),
     ]
 }
